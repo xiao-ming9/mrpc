@@ -189,7 +189,7 @@ func (c *simpleClient) send(ctx context.Context, call *Call) {
 	request.CompressType = protocol.CompressTypeNone
 	if ctx.Value(protocol.MetaDataKey) != nil {
 		// TODO:interface{}
-		request.MetaData = ctx.Value(protocol.MetaDataKey).(map[string]interface{})
+		request.MetaData = ctx.Value(protocol.MetaDataKey).(map[string]string)
 	}
 
 	requestData, err := c.codec.Encode(call.Args)

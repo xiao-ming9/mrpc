@@ -14,17 +14,17 @@ type RegisterOption struct {
 	AppKey string // AppKey 用于唯一标识某个应用,如：com.silverming.demo.rpc.server
 }
 
+type Watcher interface {
+	Next() (*Event, error) // 获取下一次服务列表的更新
+	Close()
+}
+
 // Provider 某个具体的服务提供者
 type Provider struct {
 	ProviderKey string // Network+"@"+Addr
 	Network     string
 	Addr        string
 	Meta        map[string]string
-}
-
-type Watcher interface {
-	Next() (*Event, error) // 获取下一次服务列表的更新
-	Close()
 }
 
 type EventAction byte

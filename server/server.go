@@ -210,7 +210,6 @@ func (s *simpleServer) serverTransport(tr transport.Transport) {
 				log.Printf("mrpc: connection %s is closed", tr.RemoteAddr().String())
 			} else {
 				log.Printf("mrpc: failed to read request: %v", err)
-				panic(err)
 			}
 			return
 		}
@@ -272,7 +271,7 @@ func (s *simpleServer) serverTransport(tr transport.Transport) {
 			return
 		}
 
-		response.StatusCode = protocol.StatusOk
+		response.StatusCode = protocol.StatusOK
 		response.Data = responseData
 
 		_, err = tr.Write(protocol.EncodeMessage(s.option.ProtocolType, response))

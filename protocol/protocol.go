@@ -6,7 +6,6 @@ import (
 	"github.com/vmihailenco/msgpack"
 	"io"
 	"mrpc/codec"
-	"time"
 )
 
 // 自定义消息协议
@@ -41,7 +40,7 @@ const (
 type StatusCode byte
 
 const (
-	StatusOk StatusCode = iota
+	StatusOK StatusCode = iota
 	StatusError
 )
 
@@ -71,37 +70,37 @@ func (m Message) Clone() *Message {
 	return c
 }
 
-func (m *Message) Deadline() (time.Time, bool) {
-	if m.MetaData == nil {
-		return time.Now(), false
-	} else {
-		deadline, ok := m.MetaData[RequestDeadlineKey]
-		if ok {
-			switch deadline.(type) {
-			case time.Time:
-				return deadline.(time.Time), ok
-			case *time.Time:
-				return *deadline.(*time.Time), ok
-			default:
-				return time.Now(), false
-			}
-		} else {
-			return time.Now(), false
-		}
-	}
-}
+//func (m *Message) Deadline() (time.Time, bool) {
+//	if m.MetaData == nil {
+//		return time.Now(), false
+//	} else {
+//		deadline, ok := m.MetaData[RequestDeadlineKey]
+//		if ok {
+//			switch deadline.(type) {
+//			case time.Time:
+//				return deadline.(time.Time), ok
+//			case *time.Time:
+//				return *deadline.(*time.Time), ok
+//			default:
+//				return time.Now(), false
+//			}
+//		} else {
+//			return time.Now(), false
+//		}
+//	}
+//}
 
 // 消息头信息
 type Header struct {
-	Seq           uint64                 // 序号，用来唯一标识请求或响应
-	MessageType   MessageType            // 消息类型，用来标识一个消息是请求还是响应
-	CompressType  CompressType                   // 压缩类型，用来标识一个消息的压缩方式
-	SerializeType codec.SerializeType                   // 序列化类型，用来标识消息体采用的编码方式
-	StatusCode    StatusCode             // 状态类型，用来标识一个请求是正常还是异常
-	ServiceName   string                 // 服务名
-	MethodName    string                 // 方法名
-	Error         string                 // 方法调用发生异常
-	MetaData      map[string]interface{} // 其他元数据
+	Seq           uint64              // 序号，用来唯一标识请求或响应
+	MessageType   MessageType         // 消息类型，用来标识一个消息是请求还是响应
+	CompressType  CompressType        // 压缩类型，用来标识一个消息的压缩方式
+	SerializeType codec.SerializeType // 序列化类型，用来标识消息体采用的编码方式
+	StatusCode    StatusCode          // 状态类型，用来标识一个请求是正常还是异常
+	ServiceName   string              // 服务名
+	MethodName    string              // 方法名
+	Error         string              // 方法调用发生异常
+	MetaData      map[string]string   // 其他元数据
 }
 
 type RPCProtocol struct {
@@ -134,17 +133,13 @@ func (R RPCProtocol) DecodeMessage(r io.Reader) (msg *Message, err error) {
 	}
 	data := make([]byte, totalLen)
 	_, err = io.ReadFull(r, data)
-	if err != nil {
-		return
-	}
 	headerLen := int(binary.BigEndian.Uint32(data[:4]))
 	headerBytes := data[4 : headerLen+4]
-	header := new(Header)
+	header := &Header{}
 	err = msgpack.Unmarshal(headerBytes, header)
 	if err != nil {
 		return
 	}
-
 	msg = new(Message)
 	msg.Header = header
 	msg.Data = data[headerLen+4:]
@@ -167,7 +162,7 @@ func (R RPCProtocol) EncodeMessage(msg *Message) []byte {
 	copyFullWithOffset(data, totalLenBytes, &start)
 
 	headerLenBytes := make([]byte, 4)
-	binary.BigEndian.PutUint32(headerLenBytes, uint32(len(headerLenBytes)))
+	binary.BigEndian.PutUint32(headerLenBytes, uint32(len(headerBytes)))
 	copyFullWithOffset(data, headerLenBytes, &start)
 	copyFullWithOffset(data, headerBytes, &start)
 	copyFullWithOffset(data, msg.Data, &start)
