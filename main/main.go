@@ -2,125 +2,120 @@ package main
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"log"
 	"math/rand"
 	"mrpc/client"
+	"mrpc/codec"
+	"mrpc/registry"
+	"mrpc/registry/memory"
 	"mrpc/server"
-	"sync"
+	"mrpc/service"
+	"strconv"
 	"time"
 )
 
+const callTimes = 1
+
+var s server.RpcServer
+
 func main() {
-	s := server.NewSimpleServer(server.DefaultOption)
-	err := s.Register(Arith{}, make(map[string]string))
-	if err != nil {
-		panic(err)
-	}
-	go func() {
-		err = s.Serve("tcp", ":8888")
-		if err != nil {
-			panic(err)
-		}
-	}()
-
+	StartServer()
 	time.Sleep(1e9)
-
-	wg := new(sync.WaitGroup)
-	wg.Add(100)
-	for i := 0; i < 100; i++ {
-		go func() {
-			c, err := client.NewRPCClient("tcp", ":8888", client.DefaultOption)
-			if err != nil {
-				panic(err)
-			}
-
-			args := Args{
-				A: rand.Intn(200),
-				B: rand.Intn(100),
-			}
-			reply := new(Reply)
-			err = c.Call(context.TODO(), "Arith.Add", args, reply)
-			if err != nil {
-				panic(err)
-			}
-			if reply.C != args.A+args.B {
-				log.Fatal(reply.C)
-			} else {
-				fmt.Println(reply.C)
-			}
-
-			err = c.Call(context.TODO(), "Arith.Minus", args, reply)
-			if err != nil {
-				panic(err)
-			}
-			if reply.C != args.A-args.B {
-				log.Fatal(reply.C)
-			} else {
-				fmt.Println(reply.C)
-			}
-
-			err = c.Call(context.TODO(), "Arith.Mul", args, reply)
-			if err != nil {
-				panic(err)
-			}
-			if reply.C != args.A*args.B {
-				log.Fatal(reply.C)
-			} else {
-				fmt.Println(reply.C)
-			}
-
-			err = c.Call(context.TODO(), "Arith.Divide", args, reply)
-			if err != nil {
-				log.Println(err)
-
-			}
-			if err != nil && err.Error() == "divided by 0" {
-				log.Println(err)
-			} else if reply.C != args.A/args.B {
-				log.Fatal(reply.C)
-			} else {
-				fmt.Println(reply.C)
-			}
-
-			wg.Done()
-		}()
+	start := time.Now()
+	for i := 0; i < callTimes; i++ {
+		//MakeCall(codec.GOB)
+		MakeCall(codec.MessagePack)
 	}
-	wg.Wait()
+	cost := time.Now().Sub(start)
+	log.Printf("cast:%s", cost)
+	StopServer()
+
 }
 
-type Arith struct{}
+var Registry = memory.NewInMemoryRegistry()
 
-type Args struct {
-	A int
-	B int
+func StartServer() {
+	go func() {
+		serveOpt := server.DefaultOption
+		serveOpt.RegisterOption.AppKey = "my-app"
+		serveOpt.Registry = Registry
+		s = server.NewRPCServer(serveOpt)
+		err := s.Register(service.Arith{}, make(map[string]string))
+		if err != nil {
+			log.Println("err!!!" + err.Error())
+		}
+		port := 8880
+		s.Serve("tcp", ":"+strconv.Itoa(port))
+	}()
 }
 
-type Reply struct {
-	C int
-}
+func MakeCall(t codec.SerializeType) {
+	op := &client.DefaultSGOption
+	op.AppKey = "my-app"
+	op.SerializeType = t
+	op.RequestTimeout = time.Millisecond * 100
+	op.DialTimeout = time.Millisecond * 100
+	op.FailMode = client.FailRetry
+	op.Retries = 3
 
-// arg 可以是指针类型
-func (a Arith) Add(ctx context.Context, arg *Args, reply *Reply) error {
-	reply.C = arg.A + arg.B
-	return nil
-}
+	r := registry.NewPeer2PeerRegistry()
+	r.Register(registry.RegisterOption{}, registry.Provider{
+		ProviderKey: "tcp@:8880",
+		Network:     "tcp",
+		Addr:        ":8880",
+	})
+	op.Registry = r
 
-func (a Arith) Minus(ctx context.Context, arg Args, reply *Reply) error {
-	reply.C = arg.A - arg.B
-	return nil
-}
+	c := client.NewSGClient(*op)
 
-func (a Arith) Mul(ctx context.Context, arg Args, reply *Reply) error {
-	reply.C = arg.A * arg.B
-	return nil
-}
-
-func (a Arith) Divide(ctx context.Context, arg *Args, reply *Reply) error {
-	if arg.B == 0 {
-		return errors.New("divided by 0")
+	args := service.Args{
+		A: rand.Intn(200),
+		B: rand.Intn(100),
 	}
-	reply.C = arg.A / arg.B
-	return nil
+	reply := &service.Reply{}
+	ctx := context.Background()
+	err := c.Call(ctx, "Arith.Add", args, reply)
+	if err != nil {
+		log.Println("err!!!" + err.Error())
+	} else if reply.C != args.A+args.B {
+		log.Printf("%d + %d != %d", args.A, args.B, reply.C)
+	}
+
+	args = service.Args{A: rand.Intn(200), B: rand.Intn(100)}
+	reply = &service.Reply{}
+	ctx = context.Background()
+	err = c.Call(ctx, "Arith.Minus", args, reply)
+	if err != nil {
+		log.Println("err!!!" + err.Error())
+	} else if reply.C != args.A-args.B {
+		log.Printf("%d - %d != %d", args.A, args.B, reply.C)
+	}
+
+	args = service.Args{A: rand.Intn(200), B: rand.Intn(100)}
+	reply = &service.Reply{}
+	ctx = context.Background()
+	err = c.Call(ctx, "Arith.Mul", args, reply)
+	if err != nil {
+		log.Println("err!!!" + err.Error())
+	} else if reply.C != args.A*args.B {
+		log.Printf("%d * %d != %d", args.A, args.B, reply.C)
+	}
+
+	args = service.Args{A: rand.Intn(200), B: rand.Intn(100)}
+	reply = &service.Reply{}
+	ctx = context.Background()
+	err = c.Call(ctx, "Arith.Divide", args, reply)
+	if args.B == 0 && err == nil {
+		log.Println("err!!! didn't return errror!")
+	} else if err != nil && err.Error() == "divided by 0" {
+		//log.Println(err.Error())
+	} else if err != nil {
+		log.Println("err!!!" + err.Error())
+	} else if reply.C != args.A/args.B {
+		log.Printf("%d / %d != %d", args.A, args.B, reply.C)
+	}
+}
+
+func StopServer() {
+	s.Close()
 }

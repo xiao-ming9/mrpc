@@ -11,6 +11,7 @@ import (
 
 var timeout = time.Millisecond * 10
 
+// 实现 registry.Registry 接口
 type Registry struct {
 	mu        sync.RWMutex // 读写锁
 	providers []registry.Provider
@@ -101,6 +102,7 @@ func (r *Registry) UnWatch(watcher registry.Watcher) {
 	var newWatcherList []registry.Watcher
 	for _, w := range r.watchers {
 		if w.id != target.id {
+			// TODO: 不知道这个有啥用。。。
 			newWatcherList = append(newWatcherList, w)
 		} else {
 			// TODO:此处手动添加，感觉需要 delete 掉才能实现 Unwatch
@@ -138,9 +140,11 @@ func (r *Registry) sendWatcherEvent(action registry.EventAction, AppKey string, 
 	}
 }
 
+// 实现了 registry.Watcher 接口
 type Watcher struct {
 	id   string
 	res  chan *registry.Event
+	// TODO： exit 到底是干嘛用的，还没搞明白
 	exit chan bool
 }
 

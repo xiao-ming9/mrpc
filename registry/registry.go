@@ -19,14 +19,6 @@ type Watcher interface {
 	Close()
 }
 
-// Provider 某个具体的服务提供者
-type Provider struct {
-	ProviderKey string // Network+"@"+Addr
-	Network     string
-	Addr        string
-	Meta        map[string]string
-}
-
 type EventAction byte
 
 const (
@@ -42,6 +34,15 @@ type Event struct {
 	Providers []Provider // 具体变化的服务提供者（增量而不是全量）
 }
 
+// Provider 某个具体的服务提供者
+type Provider struct {
+	ProviderKey string // Network+"@"+Addr
+	Network     string
+	Addr        string
+	Meta        map[string]string
+}
+
+// Peer2PeerDiscovery 直连的方式，实现 Registry 接口
 type Peer2PeerDiscovery struct {
 	providers []Provider
 }
@@ -50,6 +51,7 @@ func (p *Peer2PeerDiscovery) Register(option RegisterOption, providers ...Provid
 	p.providers = providers
 }
 
+// TODO 此处的注销实现应该还未完善，这里相当于注销了全部
 func (p *Peer2PeerDiscovery) Unregister(option RegisterOption, providers ...Provider) {
 	p.providers = []Provider{}
 }
@@ -58,6 +60,7 @@ func (p *Peer2PeerDiscovery) GetServiceList() []Provider {
 	return p.providers
 }
 
+// TODO Watch 和 UnWatch 两个功能也都没有具体的实现
 func (p *Peer2PeerDiscovery) Watch() Watcher {
 	return nil
 }

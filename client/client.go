@@ -11,7 +11,6 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
-	"time"
 )
 
 var ErrorShutdown = errors.New("client is shut down")
@@ -22,6 +21,7 @@ type RPCClient interface {
 	// Call 同步调用的方法
 	Call(ctx context.Context, serviceMethod string, args, reply interface{}) error
 	Close() error
+	IsShutDown() bool
 }
 
 type Call struct {
@@ -53,7 +53,7 @@ func NewRPCClient(network, addr string, option Option) (RPCClient, error) {
 
 	tr := transport.NewTransport(option.TransportType)
 	// TODO:第三个参数
-	err := tr.Dial(network, addr)
+	err := tr.Dial(network, addr, transport.DialOption{Timeout: option.DialTimeout})
 	if err != nil {
 		return nil, err
 	}
@@ -91,25 +91,24 @@ func (c *simpleClient) Call(ctx context.Context, serviceMethod string, args, rep
 	seq := atomic.AddUint64(&c.seq, 1)
 	ctx = context.WithValue(ctx, protocol.RequestSeqKey, seq)
 
-	cancelFun := func() {}
-	if c.option.RequestTimeout != time.Duration(0) {
-		ctx, cancelFun = context.WithTimeout(ctx, c.option.RequestTimeout)
-		metaDataInterface := ctx.Value(protocol.MetaDataKey)
-		var metaData map[string]string
-		if metaDataInterface == nil {
-			metaData = make(map[string]string)
-		} else {
-			metaData = metaDataInterface.(map[string]string)
-		}
-		metaData[protocol.RequestTimeoutKey] = c.option.RequestTimeout.String()
-		ctx = context.WithValue(ctx, protocol.MetaDataKey, metaData)
-	}
+	//cancelFun := func() {}
+	//if c.option.RequestTimeout != time.Duration(0) {
+	//	ctx, cancelFun = context.WithTimeout(ctx, c.option.RequestTimeout)
+	//	metaDataInterface := ctx.Value(protocol.MetaDataKey)
+	//	var metaData map[string]string
+	//	if metaDataInterface == nil {
+	//		metaData = make(map[string]string)
+	//	} else {
+	//		metaData = metaDataInterface.(map[string]string)
+	//	}
+	//	metaData[protocol.RequestTimeoutKey] = c.option.RequestTimeout.String()
+	//	ctx = context.WithValue(ctx, protocol.MetaDataKey, metaData)
+	//}
 
 	done := make(chan *Call, 1)
 	call := c.Go(ctx, serviceMethod, args, reply, done)
 	select {
 	case <-ctx.Done():
-		cancelFun()
 		c.pendingCalls.Delete(seq)
 		call.Error = errors.New("client request time out")
 	case <-call.Done:
@@ -151,15 +150,22 @@ func (c *simpleClient) input() {
 		}
 
 		seq := response.Seq
-		callInterface, _ := c.pendingCalls.Load(seq)
+		callInterface, ok := c.pendingCalls.Load(seq)
+		if !ok {
+			// 请求已经被清理掉了，可能是已经超时了
+			continue
+		}
 		call := callInterface.(*Call)
+		have := response.ServiceName + "." + response.MethodName
+		want := call.ServiceMethod
+		if have != want {
+			log.Fatalf("servicemethod not equal! have:%s,want:%s", have, want)
+		}
 		c.pendingCalls.Delete(seq)
 
 		switch {
-		case call == nil:
-			// 请求已经被清理掉了，可能是已经超时了
 		case response.Error != "":
-			call.Error = errors.New(response.Error)
+			call.Error = ServiceError(response.Error)
 			call.done()
 		default:
 			err = c.codec.Decode(response.Data, call.Reply)
@@ -169,6 +175,8 @@ func (c *simpleClient) input() {
 			call.done()
 		}
 	}
+	log.Println("input error,closing client,error:"+err.Error())
+	c.Close()
 }
 
 // send 将参数序列化并通过传输层的接口发送出去，同时将请求缓存到 pendingCalls 中
@@ -181,20 +189,18 @@ func (c *simpleClient) send(ctx context.Context, call *Call) {
 	request.Seq = seq
 	request.MessageType = protocol.MessageTypeRequest
 
-	// TODO:分割出来是什么待验证
 	serviceMethod := strings.SplitN(call.ServiceMethod, ".", 2)
 	request.ServiceName = serviceMethod[0]
 	request.MethodName = serviceMethod[1]
-	request.SerializeType = codec.MessagePack
-	request.CompressType = protocol.CompressTypeNone
+	request.SerializeType = c.option.SerializeType
+	request.CompressType = c.option.CompressType
 	if ctx.Value(protocol.MetaDataKey) != nil {
-		// TODO:interface{}
-		request.MetaData = ctx.Value(protocol.MetaDataKey).(map[string]string)
+		request.MetaData = ctx.Value(protocol.MetaDataKey).(map[string]interface{})
 	}
 
 	requestData, err := c.codec.Encode(call.Args)
 	if err != nil {
-		log.Println(err)
+		log.Println("client encode error:" + err.Error())
 		c.pendingCalls.Delete(seq)
 		call.Error = err
 		call.done()
@@ -207,7 +213,7 @@ func (c *simpleClient) send(ctx context.Context, call *Call) {
 	// 发送请求
 	_, err = c.rwc.Write(data)
 	if err != nil {
-		log.Println(err)
+		log.Println("client write error:" + err.Error())
 		c.pendingCalls.Delete(seq)
 		call.Error = err
 		call.done()
