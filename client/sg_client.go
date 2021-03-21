@@ -2,22 +2,32 @@ package client
 
 import (
 	"context"
+	"errors"
 	"log"
+	"mrpc/protocol"
 	"mrpc/registry"
+	"mrpc/selector"
 	"sync"
+	"time"
 )
 
+// SGClient SG(service governance) 表示服务治理
 type SGClient interface {
 	Go(ctx context.Context, ServiceMethod string, arg, reply interface{}, done chan *Call) (*Call, error)
 	Call(ctx context.Context, ServiceMethod string, arg, reply interface{}) error
+	Close() error
 }
 
 type sgClient struct {
 	shutdown bool
 	option   SGOption
 
-	// clients 维护了客户端到服务端的长链接
-	clients   sync.Map // map[string]RPCClient
+	mu                   sync.Mutex // 主要用于 clients 的相关操作(心跳，close等)
+	clients              sync.Map   // clients 维护了客户端到服务端的长链接,map[string]RPCClient
+	clientsHeartbeatFail map[string]int
+	breakers             sync.Map //map[string]CircuitBreaker
+	watcher              registry.Watcher
+
 	serversMu sync.RWMutex
 	servers   []registry.Provider
 }
@@ -28,14 +38,19 @@ func NewSGClient(option SGOption) SGClient {
 	AddWrapper(&s.option, NewMetaDataWrapper(), NewLogWrapper())
 
 	providers := s.option.Registry.GetServiceList()
-	watcher := s.option.Registry.Watch()
-	go s.watchService(watcher)
+	s.watcher = s.option.Registry.Watch()
+	go s.watchService(s.watcher)
 
 	s.serversMu.Lock()
 	defer s.serversMu.Unlock()
 	for _, p := range providers {
 		s.servers = append(s.servers, p)
 	}
+	if s.option.Heartbeat {
+		go s.heartbeat()
+		s.option.SelectOption.Filters = append(s.option.SelectOption.Filters, selector.DegradeProviderFilter)
+	}
+
 	return s
 }
 
@@ -76,9 +91,11 @@ func (s *sgClient) Call(ctx context.Context, ServiceMethod string, arg, reply in
 			if rpcClient != nil {
 				err = s.wrapCall(rpcClient.Call)(ctx, ServiceMethod, arg, reply)
 				if err == nil {
+					s.updateBreaker(provider.ProviderKey, true)
 					return err
 				} else {
 					if _, ok := err.(ServiceError); ok {
+						s.updateBreaker(provider.ProviderKey, false)
 						return err
 					}
 				}
@@ -91,6 +108,12 @@ func (s *sgClient) Call(ctx context.Context, ServiceMethod string, arg, reply in
 		if err == nil {
 			err = connectErr
 		}
+		if err == nil {
+			s.updateBreaker(provider.ProviderKey, true)
+		} else {
+			s.updateBreaker(provider.ProviderKey, false)
+		}
+
 		return err
 
 	case FailOver:
@@ -101,9 +124,11 @@ func (s *sgClient) Call(ctx context.Context, ServiceMethod string, arg, reply in
 			if rpcClient != nil {
 				err = s.wrapCall(rpcClient.Call)(ctx, ServiceMethod, arg, reply)
 				if err == nil {
+					s.updateBreaker(provider.ProviderKey, true)
 					return err
 				} else {
 					if _, ok := err.(ServiceError); ok {
+						s.updateBreaker(provider.ProviderKey, false)
 						return err
 					}
 				}
@@ -114,6 +139,12 @@ func (s *sgClient) Call(ctx context.Context, ServiceMethod string, arg, reply in
 		}
 		if err == nil {
 			err = connectErr
+		}
+
+		if err == nil {
+			s.updateBreaker(provider.ProviderKey, true)
+		} else {
+			s.updateBreaker(provider.ProviderKey, false)
 		}
 		return err
 
@@ -128,7 +159,42 @@ func (s *sgClient) Call(ctx context.Context, ServiceMethod string, arg, reply in
 		if s.option.FailMode == FailSafe {
 			err = nil
 		}
+
+		if err == nil {
+			s.updateBreaker(provider.ProviderKey, true)
+		} else {
+			s.updateBreaker(provider.ProviderKey, false)
+		}
 		return err
+	}
+}
+
+func (s *sgClient) Close() error {
+	s.shutdown = true
+	s.mu.Lock()
+	s.clients.Range(func(k, v interface{}) bool {
+		if client, ok := v.(simpleClient); ok {
+			s.removeClient(k.(string), &client)
+		}
+		return true
+	})
+	s.mu.Unlock()
+
+	go func() {
+		s.option.Registry.UnWatch(s.watcher)
+		s.watcher.Close()
+	}()
+
+	return nil
+}
+
+func (s *sgClient) updateBreaker(providerKey string, success bool) {
+	if breaker, ok := s.breakers.Load(providerKey); ok {
+		if success {
+			breaker.(CircuitBreaker).Success()
+		} else {
+			breaker.(CircuitBreaker).Fail()
+		}
 	}
 }
 
@@ -151,9 +217,15 @@ func (s *sgClient) providers() []registry.Provider {
 	return s.servers
 }
 
+var ErrBreakerOpen = errors.New("breaker open")
+
 // getClient 首先查看缓存是否有 key 对应的 provider，没有的话再加载一个新的并放入缓存
 func (s *sgClient) getClient(provider registry.Provider) (client RPCClient, err error) {
 	key := provider.ProviderKey
+	breaker, ok := s.breakers.Load(key)
+	if ok && !breaker.(CircuitBreaker).AllowRequest() {
+		return nil, ErrBreakerOpen
+	}
 	rc, ok := s.clients.Load(key)
 	if ok {
 		client = rc.(RPCClient)
@@ -161,8 +233,7 @@ func (s *sgClient) getClient(provider registry.Provider) (client RPCClient, err 
 			// 如果已经失效则清除掉
 			return
 		} else {
-			s.clients.Delete(key)
-			client.Close()
+			s.removeClient(key, client)
 		}
 	}
 
@@ -178,6 +249,10 @@ func (s *sgClient) getClient(provider registry.Provider) (client RPCClient, err 
 			return
 		}
 		s.clients.Store(key, client)
+
+		if s.option.CircuitBreakerThreshold > 0 && s.option.CircuitBreakerWindow > 0 {
+			s.breakers.Store(key, NewDefaultCircuitBreaker(s.option.CircuitBreakerThreshold, s.option.CircuitBreakerWindow))
+		}
 	}
 	return
 }
@@ -201,6 +276,7 @@ func (s *sgClient) removeClient(clientKey string, client RPCClient) {
 	if client != nil {
 		client.Close()
 	}
+	s.breakers.Delete(clientKey)
 }
 
 func (s *sgClient) watchService(watcher registry.Watcher) {
@@ -215,47 +291,59 @@ func (s *sgClient) watchService(watcher registry.Watcher) {
 			break
 		}
 
-		if event.AppKey == s.option.AppKey {
-			switch event.Action {
-			case registry.Create:
-				s.serversMu.Lock()
-				for _, ep := range event.Providers {
-					exists := false
-					for _, p := range s.servers {
-						if p.ProviderKey == ep.ProviderKey {
-							exists = true
-						}
-					}
-					if !exists {
-						s.servers = append(s.servers, ep)
-					}
-				}
+		s.serversMu.Lock()
+		s.servers = event.Providers
+		s.serversMu.Unlock()
+	}
+}
 
-				s.serversMu.Unlock()
-
-			case registry.Update:
+// heartbeat 客户端心跳，客户端可以定时向服务端发送心跳请求
+func (s *sgClient) heartbeat() {
+	if s.option.HeartbeatInterval <= 0 {
+		return
+	}
+	// 根据指定的时间间隔发送心跳
+	t := time.NewTicker(s.option.HeartbeatInterval)
+	for range t.C {
+		if s.shutdown {
+			t.Stop()
+			return
+		}
+		// 遍历每个 RPCClient 进行心跳检测
+		s.clients.Range(func(k, v interface{}) bool {
+			err := v.(RPCClient).Call(context.Background(), "", "", nil)
+			s.mu.Lock()
+			if err != nil {
+				// 对心跳失败进行计数
+				if fail, ok := s.clientsHeartbeatFail[k.(string)]; ok {
+					fail++
+					s.clientsHeartbeatFail[k.(string)] = fail
+				} else {
+					s.clientsHeartbeatFail[k.(string)] = 1
+				}
+			} else {
+				// 心跳成功则进行恢复
+				s.clientsHeartbeatFail[k.(string)] = 0
 				s.serversMu.Lock()
-				for _, ep := range event.Providers {
-					for i := range s.servers {
-						if s.servers[i].ProviderKey == ep.ProviderKey {
-							s.servers[i] = ep
-						}
+				for i, provider := range s.servers {
+					if provider.ProviderKey == k {
+						delete(s.servers[i].Meta, protocol.ProviderDegradeKey)
 					}
 				}
-				s.serversMu.Unlock()
-			case registry.Delete:
-				s.serversMu.Lock()
-				var newList []registry.Provider
-				for _, p := range s.servers {
-					for _, ep := range event.Providers {
-						if p.ProviderKey != ep.ProviderKey {
-							newList = append(newList, p)
-						}
-					}
-				}
-				s.servers = newList
 				s.serversMu.Unlock()
 			}
-		}
+			s.mu.Unlock()
+			// 心跳失败次数超过阈值的，需要进行降级处理
+			if s.clientsHeartbeatFail[k.(string)] > s.option.HeartbeatDegradeThreshold {
+				s.serversMu.Lock()
+				for i, provider := range s.servers {
+					if provider.ProviderKey == k {
+						s.servers[i].Meta[protocol.ProviderDegradeKey] = true
+					}
+				}
+				s.serversMu.Unlock()
+			}
+			return true
+		})
 	}
 }

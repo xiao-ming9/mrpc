@@ -7,6 +7,7 @@ import (
 	"log"
 	"mrpc/codec"
 	"mrpc/protocol"
+	"mrpc/registry"
 	"mrpc/transport"
 	"reflect"
 	"strings"
@@ -41,6 +42,9 @@ type SGServer struct {
 	shutdown         bool
 	requestInProcess int64 // 表示当前正在处理中的请求
 
+	network string
+	addr    string
+
 	Option Option
 }
 
@@ -62,6 +66,12 @@ func NewRPCServer(option Option) RpcServer {
 	s.Option = option
 	s.Option.Wrappers = append(s.Option.Wrappers, &DefaultServerWrapper{})
 	s.AddShutdownHook(func(s *SGServer) {
+		provider := registry.Provider{
+			ProviderKey: s.network + "@" + s.addr,
+			Network:     s.network,
+			Addr:        s.addr,
+		}
+		s.Option.Registry.Unregister(s.Option.RegisterOption, provider)
 		s.Close()
 	})
 	s.codec = codec.GetCodec(option.SerializeType)
@@ -198,6 +208,8 @@ func isExported(name string) bool {
 }
 
 func (s *SGServer) Serve(network string, addr string) error {
+	s.network = network
+	s.addr = addr
 	serveFunc := s.serve
 	return s.wrapServe(serveFunc)(network, addr)
 }
@@ -271,6 +283,10 @@ func (s *SGServer) serverTransport(tr transport.Transport) {
 }
 
 func (s *SGServer) doHandleRequest(ctx context.Context, request *protocol.Message, response *protocol.Message, tr transport.Transport) {
+	if request.MessageType == protocol.MessageTypeHeartbeat {
+		tr.Write(protocol.EncodeMessage(s.Option.ProtocolType,response))
+	}
+
 	sname := request.ServiceName
 	mname := request.MethodName
 	srvInterface, ok := s.serviceMap.Load(sname)
@@ -402,6 +418,16 @@ func (s *SGServer) Service() []ServiceInfo {
 
 // Close 优雅退出
 func (s *SGServer) Close() error {
+	closeFunc := s.close
+
+	for _, w := range s.Option.Wrappers {
+		closeFunc = w.WrapClose(s, closeFunc)
+	}
+
+	return closeFunc()
+}
+
+func (s *SGServer) close() error {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	s.shutdown = true
@@ -418,8 +444,6 @@ func (s *SGServer) Close() error {
 		select {
 		case <-ticker.C:
 			break
-		default:  // TODO 感觉这里需要 default，否则本次循环会一直阻塞直到超时
-
 		}
 	}
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"math/rand"
+	"mrpc/protocol"
 	"mrpc/registry"
 	"time"
 )
@@ -19,6 +20,11 @@ type Filter func(provider registry.Provider, ctx context.Context, ServiceMethod 
 
 type SelectOption struct {
 	Filters []Filter
+}
+
+func DegradeProviderFilter(provider registry.Provider, ctx context.Context, ServiceMethod string, arg interface{}) bool {
+	_, degrade := provider.Meta[protocol.ProviderDegradeKey]
+	return degrade
 }
 
 type Selector interface {

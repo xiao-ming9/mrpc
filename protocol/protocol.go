@@ -23,12 +23,15 @@ const (
 	RequestTimeoutKey  = "rpc_request_timeout"
 	RequestDeadlineKey = "rpc_request_deadline"
 	MetaDataKey        = "rpc_meta_data"
+	ProviderDegradeKey = "provider_degrade"
+	AuthKey            = "rpc_auth"
 )
 
 // 请求类型
 const (
 	MessageTypeRequest MessageType = iota
 	MessageTypeResponse
+	MessageTypeHeartbeat
 )
 
 // 用来标识一个消息的压缩方式

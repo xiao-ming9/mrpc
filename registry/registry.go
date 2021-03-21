@@ -29,7 +29,6 @@ const (
 
 // Event 表示一次更新
 type Event struct {
-	Action    EventAction
 	AppKey    string
 	Providers []Provider // 具体变化的服务提供者（增量而不是全量）
 }
@@ -39,7 +38,7 @@ type Provider struct {
 	ProviderKey string // Network+"@"+Addr
 	Network     string
 	Addr        string
-	Meta        map[string]string
+	Meta        map[string]interface{}
 }
 
 // Peer2PeerDiscovery 直连的方式，实现 Registry 接口

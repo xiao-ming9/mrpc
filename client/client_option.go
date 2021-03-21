@@ -1,6 +1,7 @@
 package client
 
 import (
+	"math"
 	"mrpc/codec"
 	"mrpc/protocol"
 	"mrpc/registry"
@@ -17,6 +18,10 @@ type Option struct {
 
 	DialTimeout    time.Duration
 	RequestTimeout time.Duration
+
+	Heartbeat                 bool
+	HeartbeatInterval         time.Duration
+	HeartbeatDegradeThreshold int
 }
 
 var DefaultOption = Option{
@@ -24,6 +29,10 @@ var DefaultOption = Option{
 	SerializeType: codec.MessagePack,
 	CompressType:  protocol.CompressTypeNone,
 	TransportType: transport.TCPTransport,
+
+	Heartbeat:                 false,
+	HeartbeatInterval:         0,
+	HeartbeatDegradeThreshold: math.MaxInt32,
 }
 
 type FailMode byte
@@ -36,32 +45,34 @@ const (
 )
 
 type SGOption struct {
-	AppKey string
+	AppKey       string
 	RemoteAppkey string
-	FailMode FailMode
-	Retries int
-	Registry registry.Registry
-	Selector selector.Selector
+	FailMode     FailMode
+	Retries      int
+	Registry     registry.Registry
+	Selector     selector.Selector
 	SelectOption selector.SelectOption
-	Wrappers []Wrapper
+	Wrappers     []Wrapper
 
 	Option
-
-	Meta map[string]string
+	Auth                    string
+	CircuitBreakerThreshold uint64
+	CircuitBreakerWindow    time.Duration
+	Meta                    map[string]string
 }
 
-func AddWrapper(o *SGOption,w ...Wrapper) *SGOption {
-	o.Wrappers = append(o.Wrappers,w...)
+func AddWrapper(o *SGOption, w ...Wrapper) *SGOption {
+	o.Wrappers = append(o.Wrappers, w...)
 	return o
 }
 
 var DefaultSGOption = SGOption{
-	AppKey: "",
+	AppKey:   "",
 	FailMode: FailFast,
-	Retries:0,
+	Retries:  0,
 	Selector: selector.NewRandomSelector(),
 
-	Option:DefaultOption,
+	Option: DefaultOption,
 
-	Meta:make(map[string]string),
+	Meta: make(map[string]string),
 }

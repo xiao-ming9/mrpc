@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 var ErrorShutdown = errors.New("client is shut down")
@@ -22,6 +23,7 @@ type RPCClient interface {
 	Call(ctx context.Context, serviceMethod string, args, reply interface{}) error
 	Close() error
 	IsShutDown() bool
+	IsDegrade() bool
 }
 
 type Call struct {
@@ -37,22 +39,27 @@ func (c *Call) done() {
 }
 
 type simpleClient struct {
-	codec        codec.Codec
-	rwc          io.ReadWriteCloser
-	pendingCalls sync.Map
-	mutex        sync.Mutex
-	shutdown     bool
-	option       Option
-	seq          uint64
+	codec            codec.Codec
+	rwc              io.ReadWriteCloser
+	network          string
+	addr             string
+	pendingCalls     sync.Map
+	mutex            sync.Mutex
+	shutdown         bool
+	degraded         bool
+	option           Option
+	seq              uint64
+	heartbeatFailNum int
 }
 
 func NewRPCClient(network, addr string, option Option) (RPCClient, error) {
 	client := new(simpleClient)
+	client.network = network
+	client.addr = addr
 	client.option = option
 	client.codec = codec.GetCodec(option.SerializeType)
 
 	tr := transport.NewTransport(option.TransportType)
-	// TODO:第三个参数
 	err := tr.Dial(network, addr, transport.DialOption{Timeout: option.DialTimeout})
 	if err != nil {
 		return nil, err
@@ -61,6 +68,9 @@ func NewRPCClient(network, addr string, option Option) (RPCClient, error) {
 	client.rwc = tr
 
 	go client.input()
+	if client.option.Heartbeat && client.option.HeartbeatInterval > 0 {
+		go client.heartbeat()
+	}
 	return client, nil
 }
 
@@ -138,6 +148,10 @@ func (c *simpleClient) IsShutDown() bool {
 	return c.shutdown
 }
 
+func (c *simpleClient) IsDegrade() bool {
+	return c.degraded
+}
+
 // input 在 client 初始化完成时通过 go input() 执行。
 // input 方法包含一个无限循环，在无限循环中读取传输层的数据并将其反序列化，并将反序列化得到的响应与缓存的请求进行匹配。
 func (c *simpleClient) input() {
@@ -175,7 +189,7 @@ func (c *simpleClient) input() {
 			call.done()
 		}
 	}
-	log.Println("input error,closing client,error:"+err.Error())
+	log.Println("input error,closing client,error:" + err.Error())
 	c.Close()
 }
 
@@ -187,11 +201,14 @@ func (c *simpleClient) send(ctx context.Context, call *Call) {
 
 	request := protocol.NewMessage(c.option.ProtocolType)
 	request.Seq = seq
-	request.MessageType = protocol.MessageTypeRequest
-
-	serviceMethod := strings.SplitN(call.ServiceMethod, ".", 2)
-	request.ServiceName = serviceMethod[0]
-	request.MethodName = serviceMethod[1]
+	if call.ServiceMethod != "" {
+		request.MessageType = protocol.MessageTypeRequest
+		serviceMethod := strings.SplitN(call.ServiceMethod, ".", 2)
+		request.ServiceName = serviceMethod[0]
+		request.MethodName = serviceMethod[1]
+	} else {
+		request.MessageType = protocol.MessageTypeHeartbeat
+	}
 	request.SerializeType = c.option.SerializeType
 	request.CompressType = c.option.CompressType
 	if ctx.Value(protocol.MetaDataKey) != nil {
@@ -218,5 +235,30 @@ func (c *simpleClient) send(ctx context.Context, call *Call) {
 		call.Error = err
 		call.done()
 		return
+	}
+}
+
+func (c *simpleClient) heartbeat() {
+	t := time.NewTicker(c.option.HeartbeatInterval)
+
+	for range t.C {
+		if c.shutdown {
+			t.Stop()
+			return
+		}
+
+		err := c.Call(context.Background(), "", "", nil)
+		if err != nil {
+			log.Printf("failed to heartbeat to %s@%s", c.network, c.addr)
+			c.mutex.Lock()
+			c.heartbeatFailNum++
+			c.mutex.Unlock()
+		}
+
+		if c.heartbeatFailNum > c.option.HeartbeatDegradeThreshold {
+			c.mutex.Lock()
+			c.degraded = true
+			c.mutex.Unlock()
+		}
 	}
 }

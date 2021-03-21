@@ -7,7 +7,7 @@ import (
 	"mrpc/client"
 	"mrpc/codec"
 	"mrpc/registry"
-	"mrpc/registry/memory"
+	"mrpc/registry/zookeeper"
 	"mrpc/server"
 	"mrpc/service"
 	"strconv"
@@ -20,7 +20,7 @@ var s server.RpcServer
 
 func main() {
 	StartServer()
-	time.Sleep(1e9)
+	time.Sleep(1e11)
 	start := time.Now()
 	for i := 0; i < callTimes; i++ {
 		//MakeCall(codec.GOB)
@@ -29,10 +29,11 @@ func main() {
 	cost := time.Now().Sub(start)
 	log.Printf("cast:%s", cost)
 	StopServer()
-
 }
 
-var Registry = memory.NewInMemoryRegistry()
+//var Registry = memory.NewInMemoryRegistry()
+var Registry = zookeeper.NewZookeeperRegistry("my-app", "xzm/mrpc/service", []string{"127.0.0.1:2181"},
+	1e10, nil)
 
 func StartServer() {
 	go func() {
