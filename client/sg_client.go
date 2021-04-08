@@ -25,7 +25,7 @@ type sgClient struct {
 	mu                   sync.Mutex // 主要用于 clients 的相关操作(心跳，close等)
 	clients              sync.Map   // clients 维护了客户端到服务端的长链接,map[string]RPCClient
 	clientsHeartbeatFail map[string]int
-	breakers             sync.Map //map[string]CircuitBreaker
+	breakers             sync.Map   // map[string]CircuitBreaker
 	watcher              registry.Watcher
 
 	serversMu sync.RWMutex
@@ -35,7 +35,7 @@ type sgClient struct {
 func NewSGClient(option SGOption) SGClient {
 	s := new(sgClient)
 	s.option = option
-	AddWrapper(&s.option, NewMetaDataWrapper(), NewLogWrapper())
+	AddWrapper(&s.option, NewMetaDataWrapper(), NewLogWrapper(),NewOpenTracingWrapper())
 
 	providers := s.option.Registry.GetServiceList()
 	s.watcher = s.option.Registry.Watch()
@@ -48,7 +48,12 @@ func NewSGClient(option SGOption) SGClient {
 	}
 	if s.option.Heartbeat {
 		go s.heartbeat()
-		s.option.SelectOption.Filters = append(s.option.SelectOption.Filters, selector.DegradeProviderFilter)
+		s.option.SelectOption.Filters = append(s.option.SelectOption.Filters, selector.DegradeProviderFilter())
+	}
+
+	if s.option.Tagged && s.option.Tags != nil {
+		s.option.SelectOption.Filters = append(s.option.SelectOption.Filters,
+			selector.TaggedProviderFilter(s.option.Tags))
 	}
 
 	return s
@@ -299,6 +304,12 @@ func (s *sgClient) watchService(watcher registry.Watcher) {
 
 // heartbeat 客户端心跳，客户端可以定时向服务端发送心跳请求
 func (s *sgClient) heartbeat() {
+	s.mu.Lock()
+	if s.clientsHeartbeatFail == nil {
+		s.clientsHeartbeatFail = make(map[string]int)
+	}
+	s.mu.Unlock()
+
 	if s.option.HeartbeatInterval <= 0 {
 		return
 	}

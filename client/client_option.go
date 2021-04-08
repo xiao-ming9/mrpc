@@ -22,6 +22,10 @@ type Option struct {
 	Heartbeat                 bool
 	HeartbeatInterval         time.Duration
 	HeartbeatDegradeThreshold int
+
+	// 基于标签的路由策略
+	Tagged bool
+	Tags   map[string]string
 }
 
 var DefaultOption = Option{

@@ -15,16 +15,46 @@ func init() {
 
 var ErrEmptyProviderList = errors.New("provider list is empty")
 
-// Filter 用于自定义规则过滤某个节点
+// Filter 用于自定义规则过滤某个节点，对于需要过滤的节点，返回 false
 type Filter func(provider registry.Provider, ctx context.Context, ServiceMethod string, arg interface{}) bool
 
 type SelectOption struct {
 	Filters []Filter
 }
 
-func DegradeProviderFilter(provider registry.Provider, ctx context.Context, ServiceMethod string, arg interface{}) bool {
-	_, degrade := provider.Meta[protocol.ProviderDegradeKey]
-	return degrade
+// DegradeProviderFilter 过滤降级节点
+func DegradeProviderFilter() Filter {
+	return func(provider registry.Provider, ctx context.Context, ServiceMethod string, arg interface{}) bool {
+		_, degrade := provider.Meta[protocol.ProviderDegradeKey]
+		return !degrade
+	}
+}
+
+// TaggedProviderFilter 基于标签的路由策略，根据 tags 进行过滤
+func TaggedProviderFilter(tags map[string]string) Filter {
+	return func(provider registry.Provider, ctx context.Context, ServiceMethod string, arg interface{}) bool {
+		if tags == nil {
+			return false
+		}
+		if provider.Meta == nil {
+			return false
+		}
+		providerTags, ok := provider.Meta["tags"].(map[string]string)
+		if !ok || len(providerTags) <= 0 {
+			return true
+		}
+
+		for k, v := range tags {
+			if tag, ok := providerTags[k]; ok {
+				if tag != v {
+					return false
+				}
+			} else {
+				return false
+			}
+		}
+		return true
+	}
 }
 
 type Selector interface {

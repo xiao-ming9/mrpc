@@ -2,13 +2,15 @@ package client
 
 import (
 	"context"
-	"log"
 	"mrpc/protocol"
+	"mrpc/share/metadata"
 	"time"
 )
 
 // MetaDataWrapper 该过滤器用于封装元数据
-type MetaDataWrapper struct{}
+type MetaDataWrapper struct {
+	defaultClientWrapper
+}
 
 func NewMetaDataWrapper() *MetaDataWrapper {
 	return &MetaDataWrapper{}
@@ -28,6 +30,7 @@ func (m *MetaDataWrapper) WrapGo(option *SGOption, goFunc GoFunc) GoFunc {
 	}
 }
 
+// wrapContext 对 Context 根据 option 进行加工处理
 func wrapContext(ctx context.Context, option *SGOption) context.Context {
 	timeout := time.Duration(0)
 	deadline, ok := ctx.Deadline()
@@ -43,19 +46,13 @@ func wrapContext(ctx context.Context, option *SGOption) context.Context {
 
 	ctx, _ = context.WithTimeout(ctx, timeout)
 
-	metaDataInterface := ctx.Value(protocol.MetaDataKey)
-	var metaData map[string]interface{}
-	if metaDataInterface == nil {
-		metaData = make(map[string]interface{})
-	} else {
-		metaData = metaDataInterface.(map[string]interface{})
-	}
+	metaData := metadata.FromContext(ctx)
 	metaData[protocol.RequestTimeoutKey] = uint64(timeout)
 
 	if option.Auth != "" {
 		metaData[protocol.AuthKey] = option.Auth
 	}
-	if auth,ok := ctx.Value(protocol.AuthKey).(string);ok {
+	if auth, ok := ctx.Value(protocol.AuthKey).(string); ok {
 		metaData[protocol.AuthKey] = auth
 	}
 
@@ -63,29 +60,6 @@ func wrapContext(ctx context.Context, option *SGOption) context.Context {
 	if ok {
 		metaData[protocol.RequestDeadlineKey] = deadline.Unix()
 	}
-	ctx = context.WithValue(ctx, protocol.MetaDataKey, metaData)
+	ctx = metadata.WithMeta(ctx, metaData)
 	return ctx
-}
-
-// LogWrapper 该过滤器用于记录请求和响应
-type LogWrapper struct{}
-
-func NewLogWrapper() Wrapper {
-	return &LogWrapper{}
-}
-
-func (l *LogWrapper) WrapCall(option *SGOption, callFunc CallFunc) CallFunc {
-	return func(ctx context.Context, ServiceMethod string, arg, reply interface{}) error {
-		log.Printf("before calling, ServiceMethod:%+v, arg:%+v", ServiceMethod, arg)
-		err := callFunc(ctx, ServiceMethod, arg, reply)
-		log.Printf("after calling,ServiceMethod:%+v,reply:%+v,error:%s", ServiceMethod, reply, err)
-		return err
-	}
-}
-
-func (l *LogWrapper) WrapGo(option *SGOption, goFunc GoFunc) GoFunc {
-	return func(ctx context.Context, ServiceMethod string, arg, reply interface{}, done chan *Call) *Call {
-		log.Printf("before going,ServiceMethod:%+v,arg:%+v", ServiceMethod, arg)
-		return goFunc(ctx, ServiceMethod, arg, reply, done)
-	}
 }

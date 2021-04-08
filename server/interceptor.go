@@ -5,6 +5,7 @@ import (
 	"log"
 	"mrpc/protocol"
 	"mrpc/registry"
+	"mrpc/share/metadata"
 	"mrpc/transport"
 	"os"
 	"os/signal"
@@ -13,12 +14,12 @@ import (
 )
 
 // 实现一个默认的过滤器
-
 type DefaultServerWrapper struct {
+	defaultServerWrapper
 }
 
 func (w *DefaultServerWrapper) WrapServe(s *SGServer, serveFunc ServeFunc) ServeFunc {
-	return func(network, addr string) error {
+	return func(network, addr string, meta map[string]interface{}) error {
 		// 注册 shutdownHook
 		go func(s *SGServer) {
 			ch := make(chan os.Signal, 1)
@@ -34,11 +35,20 @@ func (w *DefaultServerWrapper) WrapServe(s *SGServer, serveFunc ServeFunc) Serve
 			}
 		}(s)
 
+		if meta == nil {
+			meta = make(map[string]interface{})
+		}
+		// 注入 tags
+		if len(s.Option.Tags) > 0 {
+			meta["tags"] = s.Option.Tags
+		}
+		meta["services"] = s.Service()
+
 		provider := registry.Provider{
 			ProviderKey: network + "@" + addr,
 			Network:     network,
 			Addr:        addr,
-			Meta:        map[string]interface{}{"services": s.Service()},
+			Meta:        meta,
 		}
 		r := s.Option.Registry
 		rOpt := s.Option.RegisterOption
@@ -46,65 +56,37 @@ func (w *DefaultServerWrapper) WrapServe(s *SGServer, serveFunc ServeFunc) Serve
 		r.Register(rOpt, provider)
 		log.Printf("registered provider %v for app %s", provider, rOpt)
 
-		return serveFunc(network, addr)
+		return serveFunc(network, addr, meta)
 
 	}
 }
 
-func (w *DefaultServerWrapper) WrapServeTransport(s *SGServer, transportFunc ServeTransportFunc) ServeTransportFunc {
+func (w *DefaultServerWrapper) WrapServeTransport(s *SGServer,
+	transportFunc ServeTransportFunc) ServeTransportFunc {
 	return transportFunc
 }
 
 func (w *DefaultServerWrapper) WrapHandleRequest(s *SGServer, requestFunc HandleRequestFunc) HandleRequestFunc {
 	return func(ctx context.Context, request *protocol.Message, response *protocol.Message, tr transport.Transport) {
+		ctx = metadata.WithMeta(ctx, request.MetaData)
 		// 请求计数
-		atomic.AddInt64(&s.requestInProcess, 1)
+		atomic.AddInt64(&s.RequestInProcess, 1)
 		requestFunc(ctx, request, response, tr)
-		atomic.AddInt64(&s.requestInProcess, -1)
+		atomic.AddInt64(&s.RequestInProcess, -1)
 	}
 }
 
 func (w *DefaultServerWrapper) WrapClose(s *SGServer, closeFunc CloseFunc) CloseFunc {
 	return func() error {
 		provider := registry.Provider{
-			ProviderKey: s.network + "@" + s.addr,
-			Network:     s.network,
-			Addr:        s.addr,
+			ProviderKey: s.Network + "@" + s.Addr,
+			Network:     s.Network,
+			Addr:        s.Addr,
 		}
 		r := s.Option.Registry
 		rOpt := s.Option.RegisterOption
 		r.Unregister(rOpt, provider)
-		log.Printf("unregistered provider %v for app %s", provider, rOpt)
+		//log.Printf("unregistered provider %v for app %s", provider, rOpt)
 		return closeFunc()
 	}
-}
-
-type ServiceAuthWrapper struct {
-	authFunc AuthFunc
-}
-
-func (saw *ServiceAuthWrapper) WrapServe(s *SGServer, serverFunc ServeFunc) ServeFunc {
-	return serverFunc
-}
-
-func (saw *ServiceAuthWrapper) WrapServeTransport(s *SGServer, transportFunc ServeTransportFunc) ServeTransportFunc {
-	return transportFunc
-}
-
-func (saw *ServiceAuthWrapper) WrapHandleRequest(s *SGServer, requestFunc HandleRequestFunc) HandleRequestFunc {
-	return func(ctx context.Context, request *protocol.Message, response *protocol.Message, tr transport.Transport) {
-		if auth, ok := ctx.Value(protocol.AuthKey).(string); ok {
-			// 鉴权通过则则执行业务逻辑
-			if saw.authFunc(auth) {
-				requestFunc(ctx, request, response, tr)
-				return
-			}
-		}
-		// 鉴权失败则返回异常
-		s.writeErrorResponse(response, tr, "auth failed")
-	}
-}
-
-func (saw *ServiceAuthWrapper) WrapClose(s *SGServer, closeFunc CloseFunc) CloseFunc {
-	return closeFunc
 }

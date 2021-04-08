@@ -8,6 +8,7 @@ import (
 	"mrpc/codec"
 	"mrpc/protocol"
 	"mrpc/registry"
+	"mrpc/share/metadata"
 	"mrpc/transport"
 	"reflect"
 	"strings"
@@ -20,10 +21,10 @@ import (
 type RpcServer interface {
 	// 注册服务实例，receiver 是对外暴露的方法的实现者
 	// metaData 是注册服务时携带的额外元数据，描述了 receiver 的其他信息
-	Register(receiver interface{}, metaData map[string]string) error
+	Register(receiver interface{}) error
 
 	// 开始对外提供服务的接口
-	Serve(network string, addr string) error
+	Serve(network string, addr string, metaData map[string]interface{}) error
 	Service() []ServiceInfo
 	Close() error
 }
@@ -40,10 +41,10 @@ type SGServer struct {
 	tr               transport.ServerTransport
 	mutex            sync.Mutex
 	shutdown         bool
-	requestInProcess int64 // 表示当前正在处理中的请求
+	RequestInProcess int64 // 表示当前正在处理中的请求
 
-	network string
-	addr    string
+	Network string
+	Addr    string
 
 	Option Option
 }
@@ -64,12 +65,15 @@ type service struct {
 func NewRPCServer(option Option) RpcServer {
 	s := new(SGServer)
 	s.Option = option
-	s.Option.Wrappers = append(s.Option.Wrappers, &DefaultServerWrapper{})
+	s.Option.Wrappers = append(s.Option.Wrappers,
+		&DefaultServerWrapper{},
+		&OpenTracingWrapper{},
+	)
 	s.AddShutdownHook(func(s *SGServer) {
 		provider := registry.Provider{
-			ProviderKey: s.network + "@" + s.addr,
-			Network:     s.network,
-			Addr:        s.addr,
+			ProviderKey: s.Network + "@" + s.Addr,
+			Network:     s.Network,
+			Addr:        s.Addr,
 		}
 		s.Option.Registry.Unregister(s.Option.RegisterOption, provider)
 		s.Close()
@@ -78,7 +82,7 @@ func NewRPCServer(option Option) RpcServer {
 	return s
 }
 
-func (s *SGServer) Register(receiver interface{}, metaData map[string]string) error {
+func (s *SGServer) Register(receiver interface{}) error {
 	recvTyp := reflect.TypeOf(receiver)
 	name := recvTyp.Name()
 	srv := new(service)
@@ -207,11 +211,11 @@ func isExported(name string) bool {
 	return unicode.IsUpper(r)
 }
 
-func (s *SGServer) Serve(network string, addr string) error {
-	s.network = network
-	s.addr = addr
+func (s *SGServer) Serve(network string, addr string, metaData map[string]interface{}) error {
+	s.Network = network
+	s.Addr = addr
 	serveFunc := s.serve
-	return s.wrapServe(serveFunc)(network, addr)
+	return s.wrapServe(serveFunc)(network, addr, metaData)
 }
 
 func (s *SGServer) wrapServe(serveFunc ServeFunc) ServeFunc {
@@ -221,7 +225,7 @@ func (s *SGServer) wrapServe(serveFunc ServeFunc) ServeFunc {
 	return serveFunc
 }
 
-func (s *SGServer) serve(network, addr string) error {
+func (s *SGServer) serve(network, addr string, meta map[string]interface{}) error {
 	if s.shutdown {
 		return nil
 	}
@@ -272,7 +276,7 @@ func (s *SGServer) serverTransport(tr transport.Transport) {
 		response.MessageType = protocol.MessageTypeResponse
 
 		deadline, ok := response.Deadline()
-		ctx := context.Background()
+		ctx := metadata.WithMeta(context.Background(), response.MetaData)
 		if ok {
 			ctx, _ = context.WithDeadline(ctx, deadline)
 		}
@@ -284,27 +288,29 @@ func (s *SGServer) serverTransport(tr transport.Transport) {
 
 func (s *SGServer) doHandleRequest(ctx context.Context, request *protocol.Message, response *protocol.Message, tr transport.Transport) {
 	if request.MessageType == protocol.MessageTypeHeartbeat {
-		tr.Write(protocol.EncodeMessage(s.Option.ProtocolType,response))
+		response.MessageType = protocol.MessageTypeHeartbeat
+		tr.Write(protocol.EncodeMessage(s.Option.ProtocolType, response))
+		return
 	}
 
 	sname := request.ServiceName
 	mname := request.MethodName
 	srvInterface, ok := s.serviceMap.Load(sname)
 	if !ok {
-		s.writeErrorResponse(response, tr, "can not find service")
+		s.WriteErrorResponse(response, tr, "can not find service")
 		return
 	}
 
 	srv, ok := srvInterface.(*service)
 	if !ok {
-		s.writeErrorResponse(response, tr, "not *service type")
+		s.WriteErrorResponse(response, tr, "not *service type")
 		return
 	}
 
 	mtypeInterface, ok := srv.methods.Load(mname)
 	mtype, ok := mtypeInterface.(*methodType)
 	if !ok {
-		s.writeErrorResponse(response, tr, "can not find method")
+		s.WriteErrorResponse(response, tr, "can not find method")
 		return
 	}
 
@@ -317,7 +323,7 @@ func (s *SGServer) doHandleRequest(ctx context.Context, request *protocol.Messag
 	}
 	err := actualCodec.Decode(request.Data, argv)
 	if err != nil {
-		s.writeErrorResponse(response, tr, "decode arg error:"+err.Error())
+		s.WriteErrorResponse(response, tr, "decode arg error:"+err.Error())
 		return
 	}
 
@@ -340,13 +346,13 @@ func (s *SGServer) doHandleRequest(ctx context.Context, request *protocol.Messag
 
 	if len(returns) > 0 && returns[0].Interface() != nil {
 		err = returns[0].Interface().(error)
-		s.writeErrorResponse(response, tr, err.Error())
+		s.WriteErrorResponse(response, tr, err.Error())
 		return
 	}
 
 	responseData, err := actualCodec.Encode(replyv)
 	if err != nil {
-		s.writeErrorResponse(response, tr, err.Error())
+		s.WriteErrorResponse(response, tr, err.Error())
 		return
 	}
 
@@ -371,7 +377,7 @@ func (s *SGServer) doHandleRequest(ctx context.Context, request *protocol.Messag
 	}
 }
 
-func (s *SGServer) writeErrorResponse(response *protocol.Message, w io.Writer, err string) {
+func (s *SGServer) WriteErrorResponse(response *protocol.Message, w io.Writer, err string) {
 	response.Error = err
 	log.Println(response.Error)
 	response.StatusCode = protocol.StatusError
@@ -438,7 +444,7 @@ func (s *SGServer) close() error {
 	// 这里会先判断当前是否还有为处理完成的请求，有的话等待一段时间后再退出
 	for {
 		// requestInProcess 表示当前正在处理的请求数，在 wrapper 里计数
-		if s.requestInProcess <= 0 {
+		if s.RequestInProcess <= 0 {
 			break
 		}
 		select {
