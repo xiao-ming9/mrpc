@@ -141,8 +141,8 @@ func (r *Registry) sendWatcherEvent(AppKey string, providers ...registry.Provide
 
 // 实现了 registry.Watcher 接口
 type Watcher struct {
-	id   string
-	res  chan *registry.Event
+	id  string
+	res chan *registry.Event
 	// TODO： exit 到底是干嘛用的，还没搞明白
 	exit chan bool
 }

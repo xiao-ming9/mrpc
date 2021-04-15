@@ -19,11 +19,11 @@ import (
 )
 
 type RpcServer interface {
-	// 注册服务实例，receiver 是对外暴露的方法的实现者
+	// Register 注册服务实例，receiver 是对外暴露的方法的实现者
 	// metaData 是注册服务时携带的额外元数据，描述了 receiver 的其他信息
 	Register(receiver interface{}) error
 
-	// 开始对外提供服务的接口
+	// Serve 开始对外提供服务的接口
 	Serve(network string, addr string, metaData map[string]interface{}) error
 	Service() []ServiceInfo
 	Close() error
@@ -287,31 +287,32 @@ func (s *SGServer) serverTransport(tr transport.Transport) {
 }
 
 func (s *SGServer) doHandleRequest(ctx context.Context, request *protocol.Message, response *protocol.Message, tr transport.Transport) {
+	response = s.process(ctx, request, response)
+	s.writeResponse(ctx, tr, response)
+}
+
+func (s *SGServer) process(ctx context.Context, request *protocol.Message, response *protocol.Message) *protocol.Message {
 	if request.MessageType == protocol.MessageTypeHeartbeat {
 		response.MessageType = protocol.MessageTypeHeartbeat
-		tr.Write(protocol.EncodeMessage(s.Option.ProtocolType, response))
-		return
+		return response
 	}
 
 	sname := request.ServiceName
 	mname := request.MethodName
 	srvInterface, ok := s.serviceMap.Load(sname)
 	if !ok {
-		s.WriteErrorResponse(response, tr, "can not find service")
-		return
+		return errorResponse(response, "can not find service")
 	}
 
 	srv, ok := srvInterface.(*service)
 	if !ok {
-		s.WriteErrorResponse(response, tr, "not *service type")
-		return
+		return errorResponse(response, "not *service type")
 	}
 
 	mtypeInterface, ok := srv.methods.Load(mname)
 	mtype, ok := mtypeInterface.(*methodType)
 	if !ok {
-		s.WriteErrorResponse(response, tr, "can not find method")
-		return
+		return errorResponse(response, "can not find method")
 	}
 
 	argv := newValue(mtype.ArgType)
@@ -323,8 +324,7 @@ func (s *SGServer) doHandleRequest(ctx context.Context, request *protocol.Messag
 	}
 	err := actualCodec.Decode(request.Data, argv)
 	if err != nil {
-		s.WriteErrorResponse(response, tr, "decode arg error:"+err.Error())
-		return
+		return errorResponse(response, "decode arg error: "+err.Error())
 	}
 
 	var returns []reflect.Value
@@ -346,40 +346,38 @@ func (s *SGServer) doHandleRequest(ctx context.Context, request *protocol.Messag
 
 	if len(returns) > 0 && returns[0].Interface() != nil {
 		err = returns[0].Interface().(error)
-		s.WriteErrorResponse(response, tr, err.Error())
-		return
+		return errorResponse(response, err.Error())
 	}
 
 	responseData, err := actualCodec.Encode(replyv)
 	if err != nil {
-		s.WriteErrorResponse(response, tr, err.Error())
-		return
+		return errorResponse(response, err.Error())
 	}
 
 	response.StatusCode = protocol.StatusOK
 	response.Data = responseData
 
-	deadline, ok := ctx.Deadline()
-	if ok {
-		if time.Now().Before(deadline) {
-			_, err = tr.Write(protocol.EncodeMessage(s.Option.ProtocolType, response))
-			if err != nil {
-				log.Println("write response error:" + err.Error())
-			}
-		} else {
-			log.Println("passed deadline, give up write response")
-		}
+	return response
+}
+
+func errorResponse(message *protocol.Message, err string) *protocol.Message {
+	message.Error = err
+	message.StatusCode = protocol.StatusError
+	message.Data = message.Data[:0]
+	return message
+}
+
+func newValue(t reflect.Type) interface{} {
+	if t.Kind() == reflect.Ptr {
+		return reflect.New(t.Elem()).Interface()
 	} else {
-		_, err = tr.Write(protocol.EncodeMessage(s.Option.ProtocolType, response))
-		if err != nil {
-			log.Println("write response error:" + err.Error())
-		}
+		return reflect.New(t).Interface()
 	}
 }
 
-func (s *SGServer) WriteErrorResponse(response *protocol.Message, w io.Writer, err string) {
+func (s *SGServer) writeErrorResponse(response *protocol.Message, w io.Writer, err string) {
 	response.Error = err
-	log.Println(response.Error)
+	log.Printf("response error: %v", response.Error)
 	response.StatusCode = protocol.StatusError
 	response.Data = response.Data[:0] // 将数据置空
 	_, _ = w.Write(protocol.EncodeMessage(s.Option.ProtocolType, response))
@@ -390,14 +388,6 @@ func (s *SGServer) wrapHandleRequest(handleFunc HandleRequestFunc) HandleRequest
 		handleFunc = w.WrapHandleRequest(s, handleFunc)
 	}
 	return handleFunc
-}
-
-func newValue(t reflect.Type) interface{} {
-	if t.Kind() == reflect.Ptr {
-		return reflect.New(t.Elem()).Interface()
-	} else {
-		return reflect.New(t).Interface()
-	}
 }
 
 func (s *SGServer) Service() []ServiceInfo {
@@ -453,7 +443,11 @@ func (s *SGServer) close() error {
 		}
 	}
 
-	return s.tr.Close()
+	if s.tr != nil {
+		return s.tr.Close()
+	}
+
+	return nil
 }
 
 func (s *SGServer) AddShutdownHook(hook ShutDownHook) {
@@ -472,4 +466,23 @@ func (s *SGServer) wrapServeTransport(transportFunc ServeTransportFunc) ServeTra
 		transportFunc = w.WrapServeTransport(s, transportFunc)
 	}
 	return transportFunc
+}
+
+func (s *SGServer) writeResponse(ctx context.Context, tr transport.Transport, response *protocol.Message) {
+	deadline, ok := ctx.Deadline()
+	if ok {
+		if time.Now().Before(deadline) {
+			_, err := tr.Write(protocol.EncodeMessage(s.Option.ProtocolType, response))
+			if err != nil {
+				log.Println("write response error:" + err.Error())
+			}
+		} else {
+			log.Println("passed deadline, give up write response")
+		}
+	} else {
+		_, err := tr.Write(protocol.EncodeMessage(s.Option.ProtocolType, response))
+		if err != nil {
+			log.Println("write response error:" + err.Error())
+		}
+	}
 }

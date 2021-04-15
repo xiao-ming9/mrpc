@@ -8,7 +8,6 @@ import (
 
 func TestMakeCall(t *testing.T) {
 
-
 }
 
 func BenchmarkMakeCallGOB(b *testing.B) {

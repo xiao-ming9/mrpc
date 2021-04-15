@@ -56,8 +56,9 @@ func (w *DefaultServerWrapper) WrapServe(s *SGServer, serveFunc ServeFunc) Serve
 		r.Register(rOpt, provider)
 		log.Printf("registered provider %v for app %s", provider, rOpt)
 
+		// 启动 gateway
+		s.startGateway()
 		return serveFunc(network, addr, meta)
-
 	}
 }
 

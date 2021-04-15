@@ -25,7 +25,7 @@ type sgClient struct {
 	mu                   sync.Mutex // 主要用于 clients 的相关操作(心跳，close等)
 	clients              sync.Map   // clients 维护了客户端到服务端的长链接,map[string]RPCClient
 	clientsHeartbeatFail map[string]int
-	breakers             sync.Map   // map[string]CircuitBreaker
+	breakers             sync.Map // map[string]CircuitBreaker
 	watcher              registry.Watcher
 
 	serversMu sync.RWMutex
@@ -35,7 +35,7 @@ type sgClient struct {
 func NewSGClient(option SGOption) SGClient {
 	s := new(sgClient)
 	s.option = option
-	AddWrapper(&s.option, NewMetaDataWrapper(), NewLogWrapper(),NewOpenTracingWrapper())
+	AddWrapper(&s.option, NewMetaDataWrapper(), NewLogWrapper(), NewOpenTracingWrapper())
 
 	providers := s.option.Registry.GetServiceList()
 	s.watcher = s.option.Registry.Watch()

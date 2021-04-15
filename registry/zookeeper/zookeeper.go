@@ -105,7 +105,7 @@ func NewZookeeperRegistry(AppKey, ServicePath string, zkAddrs []string,
 
 func (zk *ZookeeperRegistry) doGetServiceList() {
 	path := constructServiceBasePath(zk.ServicePath, zk.AppKey)
-	log.Printf("zk.ServicePath: %s,zk.AppKey:%s,path:%s",zk.ServicePath,zk.AppKey,path)
+	log.Printf("zk.ServicePath: %s,zk.AppKey:%s,path:%s", zk.ServicePath, zk.AppKey, path)
 	kvPairs, err := zk.kv.List(path)
 	if err != nil {
 		log.Printf("error get service list %v", err)

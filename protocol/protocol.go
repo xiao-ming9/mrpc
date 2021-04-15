@@ -15,8 +15,7 @@ import (
 // -------------------------------------------------------------------------------------------------
 // |magic|version|total length|header length|     header    |                    body              |
 // -------------------------------------------------------------------------------------------------
-
-type MessageType byte
+var MAGIC = []byte{0xab, 0xba}
 
 const (
 	RequestSeqKey      = "rpc_request_seq"
@@ -27,12 +26,40 @@ const (
 	AuthKey            = "rpc_auth"
 )
 
+type MessageType byte
+
 // 请求类型
 const (
 	MessageTypeRequest MessageType = iota
 	MessageTypeResponse
 	MessageTypeHeartbeat
 )
+
+func ParseMessageType(name string) (MessageType, error) {
+	switch name {
+	case "request":
+		return MessageTypeRequest, nil
+	case "response":
+		return MessageTypeResponse, nil
+	case "heartbeat":
+		return MessageTypeHeartbeat, nil
+	default:
+		return MessageTypeRequest, errors.New("type " + name + " not found")
+	}
+}
+
+func (messageType MessageType) String() string {
+	switch messageType {
+	case MessageTypeRequest:
+		return "request"
+	case MessageTypeResponse:
+		return "response"
+	case MessageTypeHeartbeat:
+		return "heartbeat"
+	default:
+		return "unknown"
+	}
+}
 
 // 用来标识一个消息的压缩方式
 type CompressType byte
@@ -41,12 +68,52 @@ const (
 	CompressTypeNone CompressType = iota
 )
 
+func ParseCompressType(name string) (CompressType, error) {
+	switch name {
+	case "none":
+		return CompressTypeNone, nil
+	default:
+		return CompressTypeNone, errors.New("type " + name + " not found")
+	}
+}
+
+func (compressType CompressType) String() string {
+	switch compressType {
+	case CompressTypeNone:
+		return "none"
+	default:
+		return "unknown"
+	}
+}
+
 type StatusCode byte
 
 const (
 	StatusOK StatusCode = iota
 	StatusError
 )
+
+func ParseStatusCode(name string) (StatusCode, error) {
+	switch name {
+	case "ok":
+		return StatusOK, nil
+	case "error":
+		return StatusError, nil
+	default:
+		return StatusError, errors.New("type " + name + " not found")
+	}
+}
+
+func (code StatusCode) String() string {
+	switch code {
+	case StatusOK:
+		return "ok"
+	case StatusError:
+		return "error"
+	default:
+		return "unknown"
+	}
+}
 
 type ProtocolType byte
 
@@ -124,7 +191,7 @@ func (R RPCProtocol) DecodeMessage(r io.Reader) (msg *Message, err error) {
 	if err != nil {
 		return
 	}
-	if !checkMagic(first3bytes[:2]) {
+	if !CheckMagic(first3bytes[:2]) {
 		err = errors.New("wrong protocol")
 		return
 	}
@@ -189,9 +256,9 @@ func EncodeMessage(t ProtocolType, m *Message) []byte {
 	return protocols[t].EncodeMessage(m)
 }
 
-// checkMagic 鉴别是否是非法请求
-func checkMagic(bytes []byte) bool {
-	return bytes[0] == 0xab && bytes[1] == 0xba
+// CheckMagic 鉴别是否是非法请求
+func CheckMagic(bytes []byte) bool {
+	return bytes[0] == MAGIC[0] && bytes[1] == MAGIC[1]
 }
 
 func copyFullWithOffset(dst []byte, src []byte, start *int) {

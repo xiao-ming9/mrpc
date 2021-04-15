@@ -18,13 +18,13 @@ func (rl *RequestRateLimitWrapper) WrapHandleRequest(s *SGServer,
 		if rl.Limiter != nil {
 			// 尝试进行获取，获取失败则直接返回限流异常
 			if rl.Limiter.TryAcquire() {
-				requestFunc(ctx,request,response,tr)
+				requestFunc(ctx, request, response, tr)
 			} else {
-				s.WriteErrorResponse(response,tr,"request limited")
+				s.writeErrorResponse(response, tr, "request limited")
 			}
 		} else {
 			// 如果限流器为 nil 则直接返回
-			requestFunc(ctx,request,response,tr)
+			requestFunc(ctx, request, response, tr)
 		}
 	}
 }

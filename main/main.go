@@ -1,20 +1,26 @@
 package main
 
 import (
+	"bytes"
 	"context"
-	"github.com/docker/libkv/store"
+	"encoding/json"
+	"fmt"
 	"github.com/uber/jaeger-client-go"
 	"github.com/uber/jaeger-client-go/config"
 	jaegerlog "github.com/uber/jaeger-client-go/log"
 	"github.com/uber/jaeger-lib/metrics"
+	"github.com/vmihailenco/msgpack"
+	"io/ioutil"
 	"log"
 	"math/rand"
 	"mrpc/client"
 	"mrpc/codec"
-	"mrpc/registry/libkv"
+	"mrpc/protocol"
+	"mrpc/registry/memory"
 	"mrpc/server"
 	"mrpc/service"
 	"mrpc/share/ratelimit"
+	"net/http"
 	"strconv"
 	"time"
 )
@@ -54,7 +60,6 @@ func main() {
 	}
 	//defer closer.Close()
 
-
 	StartServer()
 	time.Sleep(2e9)
 	start := time.Now()
@@ -62,25 +67,31 @@ func main() {
 		MakeCall(codec.MessagePack)
 	}
 	cost := time.Now().Sub(start)
-	log.Printf("cost:%s", cost)
+	log.Printf("rpc messagepack cost:%s", cost)
 
 	start = time.Now()
 	for i := 0; i < callTimes; i++ {
 		MakeCall(codec.GOB)
 	}
 	cost = time.Now().Sub(start)
-	log.Printf("cost: %s", cost)
+	log.Printf("rpc gob codec cost: %s", cost)
 
-	//StopServer()
+	start = time.Now()
+	for i := 0; i < callTimes; i++ {
+		MakeHttpCall()
+	}
+	cost = time.Now().Sub(start)
+	log.Printf("http call const: %s", cost)
 
-	time.Sleep(10*time.Minute)
+	StopServer()
 }
 
-//var Registry = memory.NewInMemoryRegistry()
+var Registry = memory.NewInMemoryRegistry()
+
 //var Registry = zookeeper.NewZookeeperRegistry("my-app", "xzm/mrpc/service", []string{"127.0.0.1:2181"},
 //	1e10, nil)
-var Registry = libkv.NewKVRegistry(store.ZK, []string{"127.0.0.1:2181"}, "my-app",
-	"xzm/mrpc/service", 1e10, nil)
+//var Registry = libkv.NewKVRegistry(store.ZK, []string{"127.0.0.1:2181"}, "my-app",
+//	"xzm/mrpc/service", 1e10, nil)
 
 func StartServer() {
 	go func() {
@@ -144,9 +155,7 @@ func MakeCall(t codec.SerializeType) {
 	op.Tagged = true
 	op.Tags = map[string]string{"status": "alive"}
 	op.Wrappers = append(op.Wrappers, &client.RateLimitWrapper{
-		Limit: &ratelimit.DefaultRateLimiter{
-			Num: 1,
-		},
+		Limit: ratelimit.NewRateLimiter(1),
 	})
 	op.Registry = Registry
 
@@ -197,6 +206,47 @@ func MakeCall(t codec.SerializeType) {
 		log.Println("err!!!" + err.Error())
 	} else if reply.C != args.A/args.B {
 		log.Printf("%d / %d != %d", args.A, args.B, reply.C)
+	}
+}
+
+func MakeHttpCall() {
+	// 声明参数并序列化，放到 http 请求的 body 中
+	arg := service.Args{
+		A: rand.Intn(200),
+		B: rand.Intn(100),
+	}
+	data, _ := msgpack.Marshal(arg)
+	body := bytes.NewBuffer(data)
+	req, err := http.NewRequest("POST", "http://localhost:5081/invoke", body)
+	if err != nil {
+		log.Printf("http new request err: %v", err)
+		return
+	}
+	req.Header.Set(server.HEADER_SEQ, "1")
+	req.Header.Set(server.HEADER_MESSAGE_TYPE, protocol.MessageTypeRequest.String())
+	req.Header.Set(server.HEADER_COMPRESS_TYPE, protocol.CompressTypeNone.String())
+	req.Header.Set(server.HEADER_SERIALIZE_TYPE, codec.MessagePack.String())
+	req.Header.Set(server.HEADER_STATUS_CODE, protocol.StatusOK.String())
+	req.Header.Set(server.HEADER_SERVICE_NAME, "Arith")
+	req.Header.Set(server.HEADER_METHOD_NAME, "Add")
+	req.Header.Set(server.HEADER_ERROR, "")
+	meta := map[string]interface{}{"key": "value"}
+	metaJson, _ := json.Marshal(meta)
+	req.Header.Set(server.HEADER_META_DATA, string(metaJson))
+	response, err := http.DefaultClient.Do(req)
+	if err != nil {
+		log.Printf("http request err: %v", err)
+		return
+	}
+	if response.StatusCode != http.StatusOK {
+		log.Printf("response status code is not 200,is %v,the response data: %v", response.StatusCode, response)
+	} else if response.Header.Get(server.HEADER_ERROR) != "" {
+		log.Printf("response header error: %v", response.Header.Get(server.HEADER_ERROR))
+	} else {
+		data, err = ioutil.ReadAll(response.Body)
+		result := service.Reply{}
+		_ = msgpack.Unmarshal(data, &result)
+		fmt.Printf("http request result: %v", result.C)
 	}
 }
 

@@ -32,7 +32,7 @@ type DialOption struct {
 
 // 传输层的定义，用于读取数据
 type Transport interface {
-	Dial(network, addr string,option DialOption) error
+	Dial(network, addr string, option DialOption) error
 	//这里直接内嵌了 ReadWriteCloser 接口，包含 Read、Write 和 Close 方法
 	io.ReadWriteCloser
 	RemoteAddr() net.Addr
@@ -47,7 +47,7 @@ func NewTransport(t TransportType) Transport {
 	return makeTransport[t]()
 }
 
-func (s *Socket) Dial(network, addr string,option DialOption) error {
+func (s *Socket) Dial(network, addr string, option DialOption) error {
 	var dialer net.Dialer
 	if option.Timeout > time.Duration(0) {
 		dialer.Timeout = option.Timeout

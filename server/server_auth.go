@@ -22,6 +22,6 @@ func (sa *ServerAuthWrapper) WrapHandleRequest(s *SGServer,
 			}
 		}
 		// 鉴权失败则返回异常
-		s.WriteErrorResponse(response, tr, "auth failed")
+		s.writeErrorResponse(response, tr, "auth failed")
 	}
 }
