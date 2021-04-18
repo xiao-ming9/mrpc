@@ -44,7 +44,7 @@ func (w *Watcher) Close() {
 	}
 }
 
-// 支持多种数据源的 Registry
+// KVRegistry 支持多种数据源的 Registry
 type KVRegistry struct {
 	AppKey         string        // KVRegistry
 	ServicePath    string        // 数据存储的基本路径位置，比如 /service/providers
@@ -106,7 +106,7 @@ func NewKVRegistry(backend store.Backend, addrs []string, AppKey, ServicePath st
 		log.Printf("first get service list!")
 	}
 
-	// 定时拉去数据
+	// 定时拉取数据
 	go func() {
 		t := time.NewTicker(updateInterval)
 

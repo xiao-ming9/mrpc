@@ -16,7 +16,7 @@ type Reply struct {
 	C int
 }
 
-// arg 可以是指针类型
+// Add arg 可以是指针类型
 func (a Arith) Add(ctx context.Context, arg *Args, reply *Reply) error {
 	reply.C = arg.A + arg.B
 	return nil

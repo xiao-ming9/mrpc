@@ -97,7 +97,8 @@ func (s *SGServer) Register(receiver interface{}) error {
 		// 如果对应的类型没有任何符合规则的方法，扫描对应的指针（参考 net.rpc 包）
 		method := suitableMethods(reflect.PtrTo(srv.typ), false)
 		if len(method) != 0 {
-			errorStr = "mrpc.Register: type " + name + " has no exported methods of suitable type (hint: pass a pointer to value of that type)"
+			errorStr = "mrpc.Register: type " + name + " has no exported methods of suitable type" +
+				" (hint: pass a pointer to value of that type)"
 		} else {
 			errorStr = "mrpc.Register: type " + name + " has no exported methods of suitable type"
 		}

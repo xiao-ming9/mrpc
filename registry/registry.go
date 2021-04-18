@@ -1,4 +1,4 @@
-// 基于直连的服务注册
+// Package registry 基于直连的服务注册
 package registry
 
 // Registry 包含两部分功能：服务注册（用于服务端）和服务发现（用于客户端）
@@ -50,7 +50,7 @@ func (p *Peer2PeerDiscovery) Register(option RegisterOption, providers ...Provid
 	p.providers = providers
 }
 
-// TODO 此处的注销实现应该还未完善，这里相当于注销了全部
+// Unregister TODO 此处的注销实现应该还未完善，这里相当于注销了全部
 func (p *Peer2PeerDiscovery) Unregister(option RegisterOption, providers ...Provider) {
 	p.providers = []Provider{}
 }
@@ -59,7 +59,7 @@ func (p *Peer2PeerDiscovery) GetServiceList() []Provider {
 	return p.providers
 }
 
-// TODO Watch 和 UnWatch 两个功能也都没有具体的实现
+// Watch TODO Watch 和 UnWatch 两个功能也都没有具体的实现
 func (p *Peer2PeerDiscovery) Watch() Watcher {
 	return nil
 }

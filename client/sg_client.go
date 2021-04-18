@@ -203,10 +203,9 @@ func (s *sgClient) updateBreaker(providerKey string, success bool) {
 	}
 }
 
-// selectClient 根据负载均衡策略决定调用的客户端
-func (s *sgClient) selectClient(ctx context.Context, ServiceMethod string, arg interface{}) (
-
-	provider registry.Provider, client RPCClient, err error) {
+// selectClient 根据负载均衡策略决定调用的服务提供者
+func (s *sgClient) selectClient(ctx context.Context, ServiceMethod string, arg interface{}) (provider registry.Provider,
+	client RPCClient, err error) {
 	provider, err = s.option.Selector.Next(s.providers(), ctx, ServiceMethod, arg, s.option.SelectOption)
 	if err != nil {
 		return

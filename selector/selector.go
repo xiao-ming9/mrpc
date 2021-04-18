@@ -67,7 +67,7 @@ type RandomSelector struct {
 
 var RandomSelectorInstance = RandomSelector{}
 
-// 只实现了随机负载均衡
+// Next 只实现了随机负载均衡
 func (r RandomSelector) Next(providers []registry.Provider, ctx context.Context, ServiceMethod string,
 	arg interface{}, opt SelectOption) (p registry.Provider, err error) {
 	filters := combineFilter(opt.Filters)
@@ -100,6 +100,7 @@ func combineFilter(filters []Filter) Filter {
 	}
 }
 
+// NewRandomSelector 单例模式
 func NewRandomSelector() Selector {
 	return RandomSelectorInstance
 }

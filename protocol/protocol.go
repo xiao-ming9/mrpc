@@ -15,6 +15,7 @@ import (
 // -------------------------------------------------------------------------------------------------
 // |magic|version|total length|header length|     header    |                    body              |
 // -------------------------------------------------------------------------------------------------
+
 var MAGIC = []byte{0xab, 0xba}
 
 const (
@@ -61,7 +62,7 @@ func (messageType MessageType) String() string {
 	}
 }
 
-// 用来标识一个消息的压缩方式
+// CompressType 用来标识一个消息的压缩方式
 type CompressType byte
 
 const (
@@ -165,7 +166,7 @@ func (m *Message) Deadline() (time.Time, bool) {
 	}
 }
 
-// 消息头信息
+// Header 消息头信息
 type Header struct {
 	Seq           uint64                 // 序号，用来唯一标识请求或响应
 	MessageType   MessageType            // 消息类型，用来标识一个消息是请求还是响应

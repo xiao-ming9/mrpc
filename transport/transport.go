@@ -30,10 +30,10 @@ type DialOption struct {
 	Timeout time.Duration
 }
 
-// 传输层的定义，用于读取数据
+// Transport 传输层的定义，用于读取数据
 type Transport interface {
 	Dial(network, addr string, option DialOption) error
-	//这里直接内嵌了 ReadWriteCloser 接口，包含 Read、Write 和 Close 方法
+	// ReadWriteCloser 这里直接内嵌了 ReadWriteCloser 接口，包含 Read、Write 和 Close 方法
 	io.ReadWriteCloser
 	RemoteAddr() net.Addr
 	LocalAddr() net.Addr
@@ -79,13 +79,13 @@ func (s *Socket) LocalAddr() net.Addr {
 	return s.conn.LocalAddr()
 }
 
-// 服务端监听器定义，用于监听端口和建立连接
+// ServerTransport 服务端监听器定义，用于监听端口和建立连接
 type ServerTransport interface {
 	// Listen 监听端口
 	Listen(network, addr string) error
 	// Accept 建立连接
 	Accept() (Transport, error)
-	// 这里直接内嵌了 Closer 接口，包含 Close 方法
+	// Closer 这里直接内嵌了 Closer 接口，包含 Close 方法
 	io.Closer
 }
 

@@ -53,6 +53,7 @@ func (w *DefaultServerWrapper) WrapServe(s *SGServer, serveFunc ServeFunc) Serve
 		r := s.Option.Registry
 		rOpt := s.Option.RegisterOption
 
+		// 注册到注册中心
 		r.Register(rOpt, provider)
 		log.Printf("registered provider %v for app %s", provider, rOpt)
 

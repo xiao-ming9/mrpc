@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-// 钩子方法
+// ShutDownHook 钩子方法
 type ShutDownHook func(s *SGServer)
 
 type Option struct {

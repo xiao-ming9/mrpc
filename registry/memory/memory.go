@@ -1,4 +1,4 @@
-// 基于内存的服务注册
+// Package memory 基于内存的服务注册
 package memory
 
 import (
@@ -11,11 +11,16 @@ import (
 
 var timeout = time.Millisecond * 10
 
-// 实现 registry.Registry 接口
+// Registry 实现 registry.Registry 接口
 type Registry struct {
 	mu        sync.RWMutex // 读写锁
 	providers []registry.Provider
 	watchers  map[string]*Watcher
+}
+
+func NewInMemoryRegistry() registry.Registry {
+	r := &Registry{}
+	return r
 }
 
 func (r *Registry) Register(option registry.RegisterOption, providers ...registry.Provider) {
@@ -38,7 +43,6 @@ func (r *Registry) Register(option registry.RegisterOption, providers ...registr
 	}
 
 	r.providers = append(r.providers, providers2Register...)
-
 }
 
 func (r *Registry) Unregister(option registry.RegisterOption, providers ...registry.Provider) {
@@ -139,7 +143,7 @@ func (r *Registry) sendWatcherEvent(AppKey string, providers ...registry.Provide
 	}
 }
 
-// 实现了 registry.Watcher 接口
+// Watcher 实现了 registry.Watcher 接口
 type Watcher struct {
 	id  string
 	res chan *registry.Event
@@ -165,9 +169,4 @@ func (w *Watcher) Close() {
 	default:
 		close(w.exit)
 	}
-}
-
-func NewInMemoryRegistry() registry.Registry {
-	r := &Registry{}
-	return r
 }

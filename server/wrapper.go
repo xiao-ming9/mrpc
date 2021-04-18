@@ -7,6 +7,7 @@ import (
 )
 
 // 服务端切面
+
 type ServeFunc func(network, addr string, meta map[string]interface{}) error
 type ServeTransportFunc func(tr transport.Transport)
 type HandleRequestFunc func(ctx context.Context, request *protocol.Message,
@@ -14,7 +15,7 @@ type HandleRequestFunc func(ctx context.Context, request *protocol.Message,
 type CloseFunc func() error
 type AuthFunc func(key string) bool
 
-// 服务端拦截器
+// Wrapper 服务端拦截器
 type Wrapper interface {
 	WrapServe(s *SGServer, serverFunc ServeFunc) ServeFunc
 	WrapServeTransport(s *SGServer, transportFunc ServeTransportFunc) ServeTransportFunc

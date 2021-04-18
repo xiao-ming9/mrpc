@@ -1,3 +1,4 @@
+// Package server
 // http gateway 可以接收来自客户端的 http 请求，并将其转换为 rpc 请求然后交给服务端处理，再将服务端处理过后的结果通过 http 响应返回给客户端
 package server
 
