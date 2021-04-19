@@ -18,7 +18,7 @@ import (
 
 // 定义 http header 中的各个字段
 const (
-	HEADER_SEQ            = "rpc-header-seq"            //序号，用来唯一标识请求或者响应
+	HEADER_SEQ            = "rpc-header-seq"            // 序号，用来唯一标识请求或者响应
 	HEADER_MESSAGE_TYPE   = "rpc-header-message_type"   // 消息类型，用来标识一个消息是请求还是响应
 	HEADER_COMPRESS_TYPE  = "rpc-header-compress_type"  // 压缩类型，用来标识一个消息的压缩方式
 	HEADER_SERIALIZE_TYPE = "rpc-header-serialize_type" // 序列化类型，用来标识消息体采用的编码方式

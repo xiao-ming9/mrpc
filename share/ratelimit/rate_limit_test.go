@@ -26,7 +26,7 @@ func TestRateLimiter_AcquireWithTimeout(t *testing.T) {
 	r := NewRateLimiter(1)
 	success := 0
 	for {
-		if err := r.AcquireWithTimeout(time.Millisecond * 500); err != nil {
+		if err := r.AcquireWithTimeout(time.Second); err != nil {
 			fmt.Println(time.Now())
 			success++
 			if success > threshold {
@@ -42,7 +42,7 @@ func TestRateLimiter_AcquireWithTimeout(t *testing.T) {
 }
 
 func TestDefaultRateLimiter_TryAcquire(t *testing.T) {
-	r := NewRateLimiter(1)
+	r := NewRateLimiter(10)
 	success := 0
 	for {
 		if r.TryAcquire() {

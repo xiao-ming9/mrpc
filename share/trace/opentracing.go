@@ -14,3 +14,7 @@ func (c *MetaDataCarrier) ForeachKey(handler func(key, val string) error) error 
 	}
 	return nil
 }
+
+func (c *MetaDataCarrier) Set(key, val string) {
+	(*c.Meta)[key] = val
+}

@@ -6,11 +6,11 @@ import (
 )
 
 type RateLimiter interface {
-	// 获得许可，会阻塞直到获得许可
+	// Acquire 获得许可，会阻塞直到获得许可
 	Acquire()
-	// 尝试获取许可，如果不成功会立即返回 false，而不是一直阻塞
+	// TryAcquire 尝试获取许可，如果不成功会立即返回 false，而不是一直阻塞
 	TryAcquire() bool
-	// 获取许可，会阻塞直到获得许可或者超时，超时会返回一个超时异常，成功返回 nil
+	// AcquireWithTimeout 获取许可，会阻塞直到获得许可或者超时，超时会返回一个超时异常，成功返回 nil
 	AcquireWithTimeout(timeout time.Duration) error
 }
 
@@ -32,6 +32,9 @@ func NewRateLimiter(numPerSecond int64) RateLimiter {
 		}
 	}()
 
+	// goroutine 无法执行 bug ：休眠一秒钟使 goroutine 能够进行调度
+	time.Sleep(time.Second)
+
 	return r
 }
 
@@ -50,11 +53,11 @@ func (r *DefaultRateLimiter) TryAcquire() bool {
 }
 
 func (r *DefaultRateLimiter) AcquireWithTimeout(timeout time.Duration) error {
-	ticker := time.NewTicker(timeout)
+	timer := time.NewTimer(timeout)
 	select {
 	case <-r.rateLimiter:
 		return nil
-	case <-ticker.C:
+	case <-timer.C:
 		return errors.New("acquire timeout")
 	}
 }

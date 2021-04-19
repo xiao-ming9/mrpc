@@ -18,7 +18,7 @@ func NewOpenTracingWrapper() Wrapper {
 	return &OpenTracingWrapper{}
 }
 
-// 同步调用支持
+// WrapCall 同步调用支持
 func (w *OpenTracingWrapper) WrapCall(option *SGOption, callFunc CallFunc) CallFunc {
 	return func(ctx context.Context, ServiceMethod string, arg, reply interface{}) error {
 		var clientSpan opentracing.Span

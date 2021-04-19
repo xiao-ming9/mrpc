@@ -35,7 +35,7 @@ type sgClient struct {
 func NewSGClient(option SGOption) SGClient {
 	s := new(sgClient)
 	s.option = option
-	AddWrapper(&s.option, NewMetaDataWrapper(), NewLogWrapper(), NewOpenTracingWrapper())
+	AddWrapper(&s.option, NewMetaDataWrapper(), NewLogWrapper(), NewOpenTracingWrapper(),NewRateLimitWrapper(10))
 
 	providers := s.option.Registry.GetServiceList()
 	s.watcher = s.option.Registry.Watch()

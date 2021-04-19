@@ -12,6 +12,12 @@ type RateLimitWrapper struct {
 	Limit ratelimit.RateLimiter
 }
 
+func NewRateLimitWrapper(numPerSecond int64) Wrapper {
+	return &RateLimitWrapper{
+		Limit: ratelimit.NewRateLimiter(numPerSecond),
+	}
+}
+
 var ErrRateLimited = errors.New("request limited")
 
 func (r *RateLimitWrapper) WrapCall(option *SGOption, callFunc CallFunc) CallFunc {

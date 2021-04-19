@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
+	"github.com/docker/libkv/store"
 	"github.com/uber/jaeger-client-go"
 	"github.com/uber/jaeger-client-go/config"
 	jaegerlog "github.com/uber/jaeger-client-go/log"
@@ -16,16 +16,15 @@ import (
 	"mrpc/client"
 	"mrpc/codec"
 	"mrpc/protocol"
-	"mrpc/registry/memory"
+	"mrpc/registry/libkv"
 	"mrpc/server"
 	"mrpc/service"
-	"mrpc/share/ratelimit"
 	"net/http"
 	"strconv"
 	"time"
 )
 
-const callTimes = 1
+const callTimes = 10
 
 var s1, s2, s3 server.RpcServer
 
@@ -42,13 +41,9 @@ func main() {
 		},
 	}
 
-	// Example logger and metrics factory. Use github.com/uber/jaeger-client-go/log
-	// and github.com/uber/jaeger-lib/metrics respectively to bind to real logging and metrics
-	// frameworks.
 	jLogger := jaegerlog.StdLogger
 	jMetricsFactory := metrics.NullFactory
 
-	// Initialize tracer with a logger and a metrics factory
 	_, err := cfg.InitGlobalTracer(
 		"mrpc-service",
 		config.Logger(jLogger),
@@ -58,10 +53,10 @@ func main() {
 		log.Printf("Could not initialize jaeger tracer: %s", err.Error())
 		return
 	}
-	//defer closer.Close()
 
 	StartServer()
-	time.Sleep(2e9)
+	time.Sleep(5e9)
+
 	start := time.Now()
 	for i := 0; i < callTimes; i++ {
 		MakeCall(codec.MessagePack)
@@ -86,12 +81,13 @@ func main() {
 	StopServer()
 }
 
-var Registry = memory.NewInMemoryRegistry()
+//var Registry = memory.NewInMemoryRegistry()
 
 //var Registry = zookeeper.NewZookeeperRegistry("my-app", "xzm/mrpc/service", []string{"127.0.0.1:2181"},
 //	1e10, nil)
-//var Registry = libkv.NewKVRegistry(store.ZK, []string{"127.0.0.1:2181"}, "my-app",
-//	"xzm/mrpc/service", 1e10, nil)
+
+var Registry = libkv.NewKVRegistry(store.ZK, []string{"127.0.0.1:2181"}, "my-app",
+	"xzm/mrpc/service", 1e10, nil)
 
 func StartServer() {
 	go func() {
@@ -154,9 +150,6 @@ func MakeCall(t codec.SerializeType) {
 	op.HeartbeatDegradeThreshold = 10
 	op.Tagged = true
 	op.Tags = map[string]string{"status": "alive"}
-	op.Wrappers = append(op.Wrappers, &client.RateLimitWrapper{
-		Limit: ratelimit.NewRateLimiter(1),
-	})
 	op.Registry = Registry
 
 	c := client.NewSGClient(*op)
@@ -179,7 +172,7 @@ func MakeCall(t codec.SerializeType) {
 	ctx = context.Background()
 	err = c.Call(ctx, "Arith.Minus", args, reply)
 	if err != nil {
-		log.Println("err!!!" + err.Error())
+		log.Println("err!!! " + err.Error())
 	} else if reply.C != args.A-args.B {
 		log.Printf("%d - %d != %d", args.A, args.B, reply.C)
 	}
@@ -246,7 +239,6 @@ func MakeHttpCall() {
 		data, err = ioutil.ReadAll(response.Body)
 		result := service.Reply{}
 		_ = msgpack.Unmarshal(data, &result)
-		fmt.Printf("http request result: %v", result.C)
 	}
 }
 

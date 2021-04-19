@@ -13,7 +13,7 @@ import (
 	"syscall"
 )
 
-// 实现一个默认的过滤器
+// DefaultServerWrapper 实现一个默认的过滤器
 type DefaultServerWrapper struct {
 	defaultServerWrapper
 }
