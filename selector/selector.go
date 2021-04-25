@@ -34,14 +34,15 @@ func DegradeProviderFilter() Filter {
 func TaggedProviderFilter(tags map[string]string) Filter {
 	return func(provider registry.Provider, ctx context.Context, ServiceMethod string, arg interface{}) bool {
 		if tags == nil {
-			return false
+			return true
 		}
 		if provider.Meta == nil {
 			return false
 		}
-		providerTags, ok := provider.Meta["tags"].(map[string]string)
+
+		providerTags, ok := provider.Meta["tags"].(map[string]interface{})
 		if !ok || len(providerTags) <= 0 {
-			return true
+			return false
 		}
 
 		for k, v := range tags {

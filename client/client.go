@@ -229,6 +229,7 @@ func (c *simpleClient) send(ctx context.Context, call *Call) {
 }
 
 func (c *simpleClient) heartbeat() {
+	log.Println("########## client heartbeat ##########")
 	t := time.NewTicker(c.option.HeartbeatInterval)
 
 	for range t.C {
