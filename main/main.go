@@ -24,13 +24,14 @@ import (
 	"time"
 )
 
-const callTimes = 10
+const callTimes = 1
 
 var s1, s2, s3 server.RpcServer
 
 func main() {
 
 	// 连接到 jaeger 追踪系统
+	//log.Println("--------------------框架功能测试：链路追踪连接--------------------")
 	cfg := config.Configuration{
 		Sampler: &config.SamplerConfig{
 			Type:  jaeger.SamplerTypeConst,
@@ -55,7 +56,7 @@ func main() {
 	}
 
 	StartServer()
-	time.Sleep(5e9)
+	time.Sleep(2e10)
 
 	start := time.Now()
 	for i := 0; i < callTimes; i++ {
@@ -71,12 +72,15 @@ func main() {
 	cost = time.Now().Sub(start)
 	log.Printf("rpc gob codec cost: %s", cost)
 
+	//log.Println("--------------------框架功能测试：HTTP 调用--------------------")
 	start = time.Now()
 	for i := 0; i < callTimes; i++ {
 		MakeHttpCall()
 	}
 	cost = time.Now().Sub(start)
 	log.Printf("http call const: %s", cost)
+
+	//log.Println("--------------------框架功能测试：服务关闭功能--------------------")
 
 	StopServer()
 }
@@ -89,12 +93,16 @@ func main() {
 var Registry = libkv.NewKVRegistry(store.ZK, []string{"127.0.0.1:2181"}, "my-app",
 	"xzm/mrpc/service", 1e10, nil)
 
+// StartServer 服务器启动
 func StartServer() {
+	// 功能测试点一：服务多节点注册
+	//log.Println("--------------------框架功能测试：服务多节点注册发布--------------------")
 	go func() {
 		serveOpt := server.DefaultOption
 		serveOpt.RegisterOption.AppKey = "my-app"
+		//log.Println("--------------------框架功能测试：注册中心--------------------")
 		serveOpt.Registry = Registry
-		serveOpt.Tags = map[string]string{"status": "stopped"}
+		serveOpt.Tags = map[string]string{"status": "alive"}
 
 		s1 = server.NewRPCServer(serveOpt)
 		err := s1.Register(service.Arith{})
@@ -137,29 +145,14 @@ func StartServer() {
 }
 
 func MakeCall(t codec.SerializeType) {
-	op := &client.DefaultSGOption
-	op.AppKey = "my-app"
-	op.SerializeType = t
-	op.RequestTimeout = time.Millisecond * 100
-	op.DialTimeout = time.Millisecond * 100
-	op.FailMode = client.FailRetry
-	op.Retries = 3
-
-	op.Heartbeat = true
-	op.HeartbeatInterval = time.Second * 10
-	op.HeartbeatDegradeThreshold = 10
-	op.Tagged = true
-	op.Tags = map[string]string{"status": "alive"}
-	op.Registry = Registry
-
-	c := client.NewSGClient(*op)
-
+	c := getSGClient(t)
 	args := service.Args{
 		A: rand.Intn(200),
 		B: rand.Intn(100),
 	}
 	reply := &service.Reply{}
 	ctx := context.Background()
+	//log.Printf("--------------------框架功能测试：服务调用功能，包括负载均衡，容错处理，标签路由等---------------------")
 	err := c.Call(ctx, "Arith.Add", args, reply)
 	if err != nil {
 		log.Println("err!!!" + err.Error())
@@ -202,6 +195,30 @@ func MakeCall(t codec.SerializeType) {
 	}
 }
 
+func getSGClient(t codec.SerializeType) client.SGClient {
+	op := &client.DefaultSGOption
+	op.AppKey = "my-app"
+	op.SerializeType = t
+	op.RequestTimeout = time.Millisecond * 100
+	op.DialTimeout = time.Millisecond * 100
+	op.FailMode = client.FailRetry
+	op.Retries = 3
+
+	op.Heartbeat = true
+	op.HeartbeatInterval = time.Second * 10
+	op.HeartbeatDegradeThreshold = 10
+	//log.Println("--------------------框架功能测试：标签功能--------------------")
+	op.Tagged = true
+	op.Tags = map[string]string{"status": "alive"}
+	op.Registry = Registry
+	//log.Println("--------------------框架功能测试：客户端各项拦截器功能，包括元数据处理，" +
+	//	"日志记录，链路追踪，限流--------------------")
+	// 性能测试时关闭限流
+	client.AddWrapper(op, client.NewMetaDataWrapper(), client.NewLogWrapper())
+	c := client.NewSGClient(*op)
+	return c
+}
+
 func MakeHttpCall() {
 	// 声明参数并序列化，放到 http 请求的 body 中
 	arg := service.Args{
@@ -239,6 +256,7 @@ func MakeHttpCall() {
 		data, err = ioutil.ReadAll(response.Body)
 		result := service.Reply{}
 		_ = msgpack.Unmarshal(data, &result)
+		log.Printf("HTTP call Arith.Add,request arg.A= %d, arg.B= %d,response reply.C= %d\n", arg.A, arg.B, result.C)
 	}
 }
 
