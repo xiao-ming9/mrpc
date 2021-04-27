@@ -5,13 +5,13 @@ import (
 	"context"
 	"encoding/json"
 	"github.com/vmihailenco/msgpack"
+	"github.com/xiao-ming9/mrpc/codec"
+	"github.com/xiao-ming9/mrpc/protocol"
+	"github.com/xiao-ming9/mrpc/server"
+	"github.com/xiao-ming9/mrpc/service"
 	"io/ioutil"
 	"log"
 	"math/rand"
-	"mrpc/codec"
-	"mrpc/protocol"
-	"mrpc/server"
-	"mrpc/service"
 	"net/http"
 	"testing"
 	"time"
@@ -112,7 +112,7 @@ func BenchmarkMakeHttpCall(b *testing.B) {
 			data, err = ioutil.ReadAll(response.Body)
 			result := service.Reply{}
 			_ = msgpack.Unmarshal(data, &result)
-			log.Println(arg.A,arg.B,result.C)
+			log.Println(arg.A, arg.B, result.C)
 		}
 	}
 	b.StopTimer()

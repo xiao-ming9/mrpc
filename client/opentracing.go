@@ -5,9 +5,9 @@ import (
 	"github.com/opentracing/opentracing-go"
 	"github.com/opentracing/opentracing-go/ext"
 	opentracinglog "github.com/opentracing/opentracing-go/log"
+	"github.com/xiao-ming9/mrpc/share/metadata"
+	"github.com/xiao-ming9/mrpc/share/trace"
 	"log"
-	"mrpc/share/metadata"
-	"mrpc/share/trace"
 )
 
 type OpenTracingWrapper struct {

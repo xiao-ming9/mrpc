@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"mrpc/codec"
-	"mrpc/protocol"
+	"github.com/xiao-ming9/mrpc/codec"
+	"github.com/xiao-ming9/mrpc/protocol"
 	"net/http"
 	"testing"
 )

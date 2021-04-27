@@ -3,7 +3,7 @@ package client
 import (
 	"context"
 	"errors"
-	"mrpc/share/ratelimit"
+	"github.com/xiao-ming9/mrpc/share/ratelimit"
 )
 
 type RateLimitWrapper struct {

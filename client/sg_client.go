@@ -3,10 +3,10 @@ package client
 import (
 	"context"
 	"errors"
+	"github.com/xiao-ming9/mrpc/protocol"
+	"github.com/xiao-ming9/mrpc/registry"
+	"github.com/xiao-ming9/mrpc/selector"
 	"log"
-	"mrpc/protocol"
-	"mrpc/registry"
-	"mrpc/selector"
 	"sync"
 	"time"
 )

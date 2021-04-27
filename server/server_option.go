@@ -1,10 +1,10 @@
 package server
 
 import (
-	"mrpc/codec"
-	"mrpc/protocol"
-	"mrpc/registry"
-	"mrpc/transport"
+	"github.com/xiao-ming9/mrpc/codec"
+	"github.com/xiao-ming9/mrpc/protocol"
+	"github.com/xiao-ming9/mrpc/registry"
+	"github.com/xiao-ming9/mrpc/transport"
 	"time"
 )
 

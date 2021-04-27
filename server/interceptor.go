@@ -2,11 +2,11 @@ package server
 
 import (
 	"context"
+	"github.com/xiao-ming9/mrpc/protocol"
+	"github.com/xiao-ming9/mrpc/registry"
+	"github.com/xiao-ming9/mrpc/share/metadata"
+	"github.com/xiao-ming9/mrpc/transport"
 	"log"
-	"mrpc/protocol"
-	"mrpc/registry"
-	"mrpc/share/metadata"
-	"mrpc/transport"
 	"os"
 	"os/signal"
 	"sync/atomic"

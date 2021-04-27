@@ -4,11 +4,11 @@ import (
 	"context"
 	"github.com/opentracing/opentracing-go"
 	"github.com/opentracing/opentracing-go/ext"
+	"github.com/xiao-ming9/mrpc/protocol"
+	"github.com/xiao-ming9/mrpc/share/metadata"
+	"github.com/xiao-ming9/mrpc/share/trace"
+	"github.com/xiao-ming9/mrpc/transport"
 	"log"
-	"mrpc/protocol"
-	"mrpc/share/metadata"
-	"mrpc/share/trace"
-	"mrpc/transport"
 )
 
 type OpenTracingWrapper struct {

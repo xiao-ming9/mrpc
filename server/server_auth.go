@@ -2,8 +2,8 @@ package server
 
 import (
 	"context"
-	"mrpc/protocol"
-	"mrpc/transport"
+	"github.com/xiao-ming9/mrpc/protocol"
+	"github.com/xiao-ming9/mrpc/transport"
 )
 
 type ServerAuthWrapper struct {

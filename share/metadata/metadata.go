@@ -2,7 +2,7 @@ package metadata
 
 import (
 	"context"
-	"mrpc/protocol"
+	"github.com/xiao-ming9/mrpc/protocol"
 )
 
 func FromContext(ctx context.Context) map[string]interface{} {

@@ -2,8 +2,8 @@ package client
 
 import (
 	"context"
-	"mrpc/protocol"
-	"mrpc/share/metadata"
+	"github.com/xiao-ming9/mrpc/protocol"
+	"github.com/xiao-ming9/mrpc/share/metadata"
 	"time"
 )
 

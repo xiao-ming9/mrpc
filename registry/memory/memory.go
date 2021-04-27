@@ -4,7 +4,7 @@ package memory
 import (
 	"errors"
 	"github.com/google/uuid"
-	"mrpc/registry"
+	"github.com/xiao-ming9/mrpc/registry"
 	"sync"
 	"time"
 )

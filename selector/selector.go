@@ -3,9 +3,9 @@ package selector
 import (
 	"context"
 	"errors"
+	"github.com/xiao-ming9/mrpc/protocol"
+	"github.com/xiao-ming9/mrpc/registry"
 	"math/rand"
-	"mrpc/protocol"
-	"mrpc/registry"
 	"time"
 )
 

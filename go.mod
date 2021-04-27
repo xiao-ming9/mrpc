@@ -1,4 +1,4 @@
-module mrpc
+module github.com/xiao-ming9/mrpc
 
 go 1.16
 

@@ -1,12 +1,12 @@
 package client
 
 import (
+	"github.com/xiao-ming9/mrpc/codec"
+	"github.com/xiao-ming9/mrpc/protocol"
+	"github.com/xiao-ming9/mrpc/registry"
+	"github.com/xiao-ming9/mrpc/selector"
+	"github.com/xiao-ming9/mrpc/transport"
 	"math"
-	"mrpc/codec"
-	"mrpc/protocol"
-	"mrpc/registry"
-	"mrpc/selector"
-	"mrpc/transport"
 	"time"
 )
 
